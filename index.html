@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lantern Maze</title>
+<meta name="description" content="미로를 잠깐 보여 주고 불이 꺼지면, 기억과 꺼져 가는 등불로 출구를 찾는 게임.">
+<meta property="og:title" content="Lantern Maze">
+<meta property="og:description" content="미로를 1초 보고, 어둠 속에서 기억만으로 출구를 찾아보세요.">
+<meta property="og:image" content="icons/icon-512.png">
+<meta name="theme-color" content="#07080d">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="play/fonts/fonts.css">
+<style>
+:root {
+  --night: #07080d; --floor: #141824; --line: #262c3d;
+  --lamp: #ffcf5a; --exit: #39d98a; --ink: #e7e9f2; --muted: #8a92a8;
+  --font-display: "Chakra Petch", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Gowun Dodum", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; min-height: 100%; }
+body {
+  background: radial-gradient(circle at 50% 18%, rgba(255, 207, 90, 0.16), transparent 42%), var(--night);
+  color: var(--ink); font-family: var(--font-body); line-height: 1.6; word-break: keep-all;
+  padding: max(24px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+}
+main { max-width: 420px; margin: 0 auto; display: grid; gap: 18px; text-align: center; }
+.logo { width: 112px; height: 112px; margin: 8px auto 0; border-radius: 26px; box-shadow: 0 0 40px rgba(255, 207, 90, 0.25); }
+h1 { margin: 0; font-family: var(--font-display); font-size: 2rem; color: var(--lamp); letter-spacing: 0.04em; }
+.lead { margin: 0; color: var(--muted); }
+.buttons { display: grid; gap: 10px; }
+.btn {
+  display: block; padding: 14px 16px; border-radius: 12px; text-decoration: none;
+  font-family: var(--font-display); font-weight: 600; font-size: 1.05rem;
+  background: var(--lamp); color: var(--night); border: 1px solid var(--lamp);
+}
+.btn small { display: block; font-family: var(--font-body); font-weight: 400; font-size: 0.8rem; opacity: 0.8; }
+.btn.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
+.btn:focus-visible { outline: 2px solid var(--lamp); outline-offset: 3px; }
+details { text-align: left; background: var(--floor); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+summary { cursor: pointer; font-weight: 600; }
+ol { margin: 10px 0 0; padding-left: 20px; color: var(--muted); font-size: 0.92rem; }
+ol b { color: var(--ink); font-weight: 600; }
+.how { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; font-size: 0.82rem; color: var(--muted); }
+.how div { background: var(--floor); border: 1px solid var(--line); border-radius: 10px; padding: 10px 6px; }
+.how b { display: block; font-family: var(--font-display); color: var(--ink); font-size: 1.1rem; }
+footer { color: var(--muted); font-size: 0.78rem; }
+</style>
+</head>
+<body>
+<main>
+  <img class="logo" src="icons/icon-512.png" alt="Lantern Maze 아이콘" width="112" height="112">
+  <h1>Lantern Maze</h1>
+  <p class="lead">미로를 1초 보여 주고 불이 꺼집니다.<br>기억과 꺼져 가는 등불로 출구를 찾으세요.</p>
+
+  <div class="how" aria-label="게임 방법">
+    <div><b>1</b>미로를 잠깐 기억</div>
+    <div><b>2</b>어둠 속에서 이동</div>
+    <div><b>3</b>등불이 꺼지기 전 탈출</div>
+  </div>
+
+  <div class="buttons" id="buttons">
+    <a class="btn" id="play" href="play/">바로 플레이<small>설치 없이 브라우저에서 · 아이폰·안드로이드·PC</small></a>
+    <a class="btn ghost" id="apk" href="https://github.com/gcrjun/lantern-maze/releases/download/test-build/lantern-maze-test.apk">안드로이드 앱 받기<small>테스트 버전 APK · 약 6MB</small></a>
+  </div>
+
+  <details id="android-help">
+    <summary>안드로이드 앱 설치 방법</summary>
+    <ol>
+      <li><b>안드로이드 앱 받기</b>를 누르고, 경고가 나오면 <b>그래도 다운로드</b></li>
+      <li>다운로드한 파일을 열고 <b>출처를 알 수 없는 앱 허용</b></li>
+      <li><b>설치</b> (Play 프로텍트 경고는 <b>무시하고 설치</b>)</li>
+      <li>"설치되지 않음"이 나오면 예전 Lantern Maze를 지우고 다시 설치</li>
+    </ol>
+  </details>
+
+  <details id="ios-help">
+    <summary>아이폰에서 앱처럼 쓰기</summary>
+    <ol>
+      <li>Safari에서 <b>바로 플레이</b>를 엽니다</li>
+      <li>아래쪽 <b>공유 버튼</b> → <b>홈 화면에 추가</b></li>
+      <li>홈 화면 아이콘으로 열면 주소창 없이 전체 화면으로 실행</li>
+    </ol>
+  </details>
+
+  <footer>테스트 버전입니다. 기록은 이 기기에만 저장됩니다.</footer>
+</main>
+<script>
+// Put the right option first for the visitor's phone.
+(function () {
+  var ua = navigator.userAgent || "";
+  var ios = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  var android = /Android/.test(ua);
+  if (ios) {
+    document.getElementById("apk").hidden = true;
+    document.getElementById("android-help").hidden = true;
+    document.getElementById("ios-help").open = true;
+  } else if (android) {
+    var apk = document.getElementById("apk"), play = document.getElementById("play");
+    apk.className = "btn"; play.className = "btn ghost";
+    apk.parentNode.insertBefore(apk, play);
+    document.getElementById("ios-help").hidden = true;
+  }
+})();
+</script>
+</body>
+</html>
