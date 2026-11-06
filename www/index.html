@@ -52,7 +52,7 @@ body {
 }
 .left, .right { display: grid; min-width: 0; min-height: 0; }
 .left { grid-area: left; grid-template-rows: auto 1fr; gap: 10px; }
-.right { grid-area: right; grid-template-rows: auto 1fr; gap: 10px; }
+.right { grid-area: right; grid-template-rows: auto auto 1fr; gap: 10px; }
 
 .corner { display: flex; align-items: center; gap: 10px; }
 .icon {
@@ -92,7 +92,33 @@ body {
 .gauge.low i { background: var(--danger); }
 .hud small.memo { color: var(--lamp); font-family: var(--font-display); font-weight: 600; font-size: 0.8rem; }
 
-.dash-zone { display: grid; place-items: center; min-height: 120px; }
+.dash-zone { display: grid; place-items: center; min-height: 110px; }
+
+/* Items: right-thumb buttons above the dash. One use each per maze for now (later: purchases or rewarded ads). */
+.items { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.item {
+  position: relative; display: grid; gap: 1px; place-items: center;
+  padding: 5px 2px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--floor); color: var(--ink); font-family: var(--font-body); font-size: 0.72rem;
+  cursor: pointer; touch-action: none; white-space: nowrap;
+}
+.item b { font-family: var(--font-display); font-size: 0.9rem; color: var(--lamp); line-height: 1.1; }
+.item .count {
+  position: absolute; top: -6px; right: -5px; min-width: 18px; height: 18px; padding: 0 4px;
+  display: grid; place-items: center; border-radius: 9px;
+  background: var(--lamp); color: var(--night); font-family: var(--font-display); font-size: 0.68rem; font-weight: 600;
+}
+.item:disabled { opacity: 0.35; cursor: default; }
+.item:disabled .count { background: var(--muted); }
+.item.on { border-color: var(--lamp); background: rgba(255, 207, 90, 0.16); }
+.item.ready { border-color: var(--lamp); animation: ready 0.7s ease-in-out infinite alternate; }
+@keyframes ready { to { background: rgba(255, 207, 90, 0.22); } }
+@media (prefers-reduced-motion: reduce) { .item.ready { animation: none; } }
+
+.home .card { gap: 8px; }
+.home .title { font-size: 1.5rem; color: var(--lamp); letter-spacing: 0.04em; }
+.home .sub { margin: 0 0 4px; color: var(--muted); font-size: 0.85rem; }
+.home .btn { width: 100%; }
 .dash {
   width: 96px; height: 96px; border-radius: 50%;
   border: 2px solid var(--lamp); background: rgba(255, 207, 90, 0.12);
@@ -194,8 +220,8 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
 @media (orientation: portrait) {
   .app {
     grid-template-columns: 1fr 1fr;
-    grid-template-rows: auto auto 1fr;
-    grid-template-areas: "corner hud" "board board" "stick dash";
+    grid-template-rows: auto auto auto 1fr;
+    grid-template-areas: "corner hud" "board board" "items items" "stick dash";
     row-gap: 10px;
   }
   .left, .right { display: contents; }
@@ -203,10 +229,11 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
   .hud { grid-area: hud; }
   .stick-zone { grid-area: stick; }
   .dash-zone { grid-area: dash; }
+  .items { grid-area: items; grid-template-columns: repeat(4, 1fr); }
   .board {
     justify-self: center;
-    width: min(100%, calc(100vh - 330px));
-    width: min(100%, calc(100dvh - 330px));
+    width: min(100%, calc(100vh - 400px));
+    width: min(100%, calc(100dvh - 400px));
   }
 }
 </style>
@@ -292,9 +319,22 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
           <button class="toggle" id="t-vib" aria-pressed="true">진동<small>켜짐</small></button>
         </div>
         <div class="row">
+          <button class="btn ghost" id="p-quit">그만하기</button>
           <button class="btn ghost" id="p-restart">다시 하기</button>
           <button class="btn" id="p-resume">계속하기</button>
         </div>
+      </div>
+    </div>
+
+    <div class="overlay home" id="home" hidden>
+      <div class="card">
+        <h2 class="title">Lantern Maze</h2>
+        <p class="sub">잠깐 본 미로를 기억하고, 꺼져 가는 등불로 출구를 찾으세요.</p>
+        <button class="btn" id="h-continue">이어하기</button>
+        <button class="btn ghost" id="h-select">스테이지 선택</button>
+        <button class="btn ghost" id="h-free">자유 플레이</button>
+        <button class="btn ghost" id="h-settings">설정</button>
+        <button class="btn ghost" id="h-exit" hidden>게임 종료</button>
       </div>
     </div>
 
@@ -317,6 +357,12 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
     <div class="hud">
       <div class="hud-row"><small id="lamp-label">등불</small><div class="gauge" id="gauge"><i id="gauge-fill"></i></div></div>
       <div class="hud-row"><small>이동</small><b id="moves">0</b><span class="goal" id="goal">★★★ 0 이하</span></div>
+    </div>
+    <div class="items" id="items" role="group" aria-label="아이템">
+      <button class="item" id="item-memo" data-item="memo" aria-label="미리보기 2초 더 보기 (키 1)"><b>+2초</b>미리보기<span class="count">1</span></button>
+      <button class="item" id="item-peek" data-item="peek" aria-label="출구 쪽 잠시 보기 (키 2)"><b>⇲</b>출구 보기<span class="count">1</span></button>
+      <button class="item" id="item-bright" data-item="bright" aria-label="등불 잠시 환하게 (키 3)"><b>✦</b>환한 등불<span class="count">1</span></button>
+      <button class="item" id="item-beacon" data-item="beacon" aria-label="출구 잠시 깜박이기 (키 4)"><b>◉</b>출구 신호<span class="count">1</span></button>
     </div>
     <div class="dash-zone">
       <button class="dash" id="dash" aria-label="질주: 다음 갈림길까지 한 번에 이동">질주</button>
@@ -389,7 +435,7 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
     retry: $("retry"), next: $("next"),
     pauseMenu: $("pause-menu"),
     select: $("select"), chapters: $("chapters"), grid: $("stage-grid"), summary: $("select-summary"), bonusBtn: $("bonus-btn"),
-    board: $("board")
+    board: $("board"), home: $("home")
   };
   var colors = { stone: "#6f7c99", floor: "#141824", lamp: "#ffcf5a", oil: "#ff9f3a", exit: "#39d98a", danger: "255,90,79", dark: "0,0,0" };
   // Background themes: 1 = black (original), 2 = dark gray. "dark" is the colour of the unlit area.
@@ -600,7 +646,8 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
       beat: function () { tone(70, 0.14, "sine", 0.35, 45); tone(70, 0.12, "sine", 0.22, 45, 0.18); },
       win: function () { [523.25, 659.25, 783.99, 1046.5].forEach(function (f, i) { tone(f, 0.35, "triangle", 0.13, null, i * 0.1); }); },
       lose: function () { tone(440, 0.9, "sawtooth", 0.05, 110); tone(220, 0.9, "sine", 0.1, 55, 0.05); },
-      click: function () { tone(900, 0.04, "square", 0.025); }
+      click: function () { tone(900, 0.04, "square", 0.025); },
+      item: function () { tone(520, 0.1, "triangle", 0.1); tone(780, 0.1, "triangle", 0.1, null, 0.07); tone(1040, 0.22, "sine", 0.08, null, 0.14); }
     };
   })();
 
@@ -780,7 +827,12 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
     if (isBonus(id)) return "보너스 " + (bonusChapter(id) + 1);
     return String(id + 1);
   }
-  function isActive() { return state === "preview" || state === "fade" || state === "playing"; }
+  function isActive() { return state === "preview" || state === "fade" || state === "playing" || state === "peek"; }
+  function setMemo(on) {
+    $("lamp-label").textContent = on ? "기억하세요!" : "등불";
+    $("lamp-label").className = on ? "memo" : "";
+    el.board.classList.toggle("memo", on);
+  }
 
   function newFree() {
     freeSeed = Math.floor(Math.random() * 1000000000) + 1;
@@ -803,9 +855,9 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
     el.pauseMenu.hidden = true;
     el.select.hidden = true;
     el.banner.hidden = true;
-    $("lamp-label").textContent = "기억하세요!";
-    $("lamp-label").className = "memo";
-    el.board.classList.add("memo");
+    el.home.hidden = true;
+    setMemo(true);
+    resetItems();
     el.kind.textContent = id === "free" ? "크기" : isBonus(id) ? "챕터" : "스테이지";
     el.stage.textContent = levelName(id);
     el.moves.textContent = "0";
@@ -943,9 +995,14 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
       pausedFrom = state;
       state = "paused";
       Sound.setLevel(0.35);
-    } else if (state !== "won" && state !== "lost") {
+    } else if (state !== "won" && state !== "lost" && state !== "home") {
       return;
     }
+    var atHome = state === "home";
+    el.home.hidden = true;
+    $("p-resume").textContent = atHome ? "닫기" : "계속하기";
+    $("p-restart").hidden = atHome;
+    $("p-quit").hidden = atHome;
     heldDir = null; keysDown = []; padDir = null; slideDir = null; dashing = false;
     releaseStick();
     renderToggles();
@@ -955,7 +1012,7 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
     $("p-resume").focus();
   }
   function resume() {
-    if (state !== "paused") { el.pauseMenu.hidden = true; return; }
+    if (state !== "paused") { el.pauseMenu.hidden = true; if (state === "home") showHome(); return; }
     state = pausedFrom || "playing";
     pausedFrom = null;
     el.pauseMenu.hidden = true;
@@ -963,17 +1020,50 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
     Sound.setLevel(1);
     canvas.focus();
   }
+  // Pause only a running maze (tab switch, app sent to background); never pops a menu on other screens.
+  function autoPause() { if (isActive()) pause(); }
+  // Returns false on the home screen so the Android wrapper can close the app.
   function handleBack() {
     if (!el.select.hidden) { closeSelect(); return true; }
     if (!el.pauseMenu.hidden) { resume(); return true; }
+    if (state === "home") return false;
     if (isActive()) { pause(); return true; }
     if (!el.result.hidden) { pause(); return true; }
     return false;
   }
 
+  // ---------- home screen ("그만하기") ----------
+  // The board behind the menu shows a throwaway maze, so quitting never gives free study time on a stage.
+  function goHome() {
+    heldDir = null; keysDown = []; padDir = null; slideDir = null; dashing = false; moving = null;
+    releaseStick();
+    maze = buildLevel({ size: 12, preview: 1, secPerCell: 1, oils: 0 }, Math.floor(Math.random() * 1000000000) + 1);
+    player = { x: maze.start.x, y: maze.start.y };
+    drawPos = { x: player.x, y: player.y };
+    oil = maze.lampMax; darkness = 0; flash = 0; beatGlow = 0; cam.ready = false;
+    state = "home"; pausedFrom = null;
+    el.result.hidden = true; el.pauseMenu.hidden = true; el.select.hidden = true; el.banner.hidden = true;
+    setMemo(false);
+    el.kind.textContent = "메뉴";
+    el.stage.textContent = "처음 화면";
+    el.moves.textContent = "0";
+    el.goal.textContent = "";
+    updateGauge();
+    resetItems();
+    Sound.setLevel(0.5);
+    showHome();
+  }
+  function showHome() {
+    $("h-continue").textContent = "이어하기 · 스테이지 " + (furthestStage() + 1);
+    el.home.hidden = false;
+    $("h-continue").focus();
+  }
+
   // ---------- main loop ----------
   function updatePlaying(dt) {
     oil -= dt;
+    brightTime = Math.max(0, brightTime - dt);
+    beaconTime = Math.max(0, beaconTime - dt);
     flash = Math.max(0, flash - dt * 2);
     updateGauge();
     var f = oil / maze.lampMax;
@@ -1019,10 +1109,12 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
       stateTimer += dt;
       if (stateTimer >= cfg.preview) {
         state = "fade"; stateTimer = 0;
-        $("lamp-label").textContent = "등불"; $("lamp-label").className = "";
-        el.board.classList.remove("memo");
+        setMemo(false);
         Sound.dark();
       }
+    } else if (state === "peek") {
+      stateTimer += dt;
+      if (stateTimer >= ITEMS.peek.seconds) state = "playing";
     } else if (state === "fade") {
       stateTimer += dt;
       darkness = Math.min(1, stateTimer / FADE_SECONDS);
@@ -1031,6 +1123,7 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
       updatePlaying(dt);
     }
     Sound.update();
+    renderItems();
     updateCamera(dt);
     draw();
     requestAnimationFrame(tick);
@@ -1046,6 +1139,76 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
     canvas.width = Math.round(cssSize * dpr);
     canvas.height = Math.round(cssSize * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    mask.width = canvas.width;
+    mask.height = canvas.height;
+    mctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  // Darkness is drawn on a second canvas and lights are cut out of it, so more than one light
+  // (the lamp, and the exit while peeking) can show at once. Same falloff as the single-light version.
+  var mask = document.createElement("canvas");
+  var mctx = mask.getContext("2d");
+  function drawDarkness(lights) {
+    mctx.globalCompositeOperation = "source-over";
+    mctx.clearRect(0, 0, cssSize, cssSize);
+    mctx.fillStyle = "rgb(" + colors.dark + ")";
+    mctx.fillRect(0, 0, cssSize, cssSize);
+    mctx.globalCompositeOperation = "destination-out";
+    for (var i = 0; i < lights.length; i++) {
+      var l = lights[i];
+      if (l.r <= 0) continue;
+      var a = (1 - CENTER_DARKNESS) * l.k;
+      var g = mctx.createRadialGradient(l.x, l.y, 0, l.x, l.y, l.r);
+      g.addColorStop(0, "rgba(0,0,0," + a + ")");
+      g.addColorStop(0.5, "rgba(0,0,0," + a * 0.5 + ")");
+      g.addColorStop(1, "rgba(0,0,0,0)");
+      mctx.fillStyle = g;
+      mctx.beginPath();
+      mctx.arc(l.x, l.y, l.r, 0, Math.PI * 2);
+      mctx.fill();
+    }
+    mctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = darkness;
+    ctx.drawImage(mask, 0, 0, cssSize, cssSize);
+    ctx.globalAlpha = 1;
+  }
+  // 0→1→0 envelope for timed effects: quick fade in, short fade out.
+  function envelope(left, total, fadeIn, fadeOut) {
+    if (left <= 0) return 0;
+    return Math.max(0, Math.min(1, (total - left) / fadeIn, left / fadeOut));
+  }
+  function drawBeacon(ox, oy, tile) {
+    if (beaconTime <= 0 || darkness <= 0) return;
+    var blink = 0.5 + 0.5 * Math.sin(clock * 9);
+    var ex = ox + (maze.exit.x * 2 + 1.5) * tile, ey = oy + (maze.exit.y * 2 + 1.5) * tile;
+    var m = tile;
+    if (ex > -m && ex < cssSize + m && ey > -m && ey < cssSize + m) {
+      var glow = ctx.createRadialGradient(ex, ey, 0, ex, ey, tile * 2.6);
+      glow.addColorStop(0, "rgba(57,217,138," + (0.55 * blink) + ")");
+      glow.addColorStop(1, "rgba(57,217,138,0)");
+      ctx.fillStyle = glow;
+      ctx.fillRect(ex - tile * 2.6, ey - tile * 2.6, tile * 5.2, tile * 5.2);
+      ctx.globalAlpha = 0.3 + 0.7 * blink;
+      ctx.fillStyle = colors.exit;
+      ctx.fillRect(ex - tile / 2, ey - tile / 2, tile, tile);
+      ctx.globalAlpha = 1;
+      return;
+    }
+    // Exit is off-screen: a blinking arrow on the board edge points toward it.
+    var cx = cssSize / 2, cy = cssSize / 2, dx = ex - cx, dy = ey - cy;
+    var inset = 18, k = Math.min((cx - inset) / Math.abs(dx || 1e-6), (cy - inset) / Math.abs(dy || 1e-6));
+    var ax = cx + dx * k, ay = cy + dy * k, ang = Math.atan2(dy, dx), size = 13;
+    ctx.save();
+    ctx.translate(ax, ay);
+    ctx.rotate(ang);
+    ctx.globalAlpha = 0.35 + 0.65 * blink;
+    ctx.fillStyle = colors.exit;
+    ctx.beginPath();
+    ctx.moveTo(size, 0);
+    ctx.lineTo(-size * 0.8, -size * 0.75);
+    ctx.lineTo(-size * 0.8, size * 0.75);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
   }
 
   // Camera: the whole maze is shown while memorising and on the result screen;
@@ -1054,10 +1217,12 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
   var cam = { span: 0, x: 0, y: 0, ready: false };
   function cameraTarget() {
     var full = maze.tiles;
-    var zoomed = state === "fade" || state === "playing" || state === "paused";
+    var zoomed = state === "fade" || state === "playing" || state === "paused" || state === "peek";
     var span = zoomed ? Math.min(full, VIEW_TILES) : full;
     var half = span / 2;
-    var tx = drawPos.x * 2 + 1.5, ty = drawPos.y * 2 + 1.5;
+    var peeking = state === "peek" || (state === "paused" && pausedFrom === "peek");
+    var focus = peeking ? maze.exit : drawPos;
+    var tx = focus.x * 2 + 1.5, ty = focus.y * 2 + 1.5;
     return {
       span: span,
       x: Math.min(full - half, Math.max(half, tx)),
@@ -1105,15 +1270,16 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
 
     if (darkness > 0) {
       var flicker = f < 0.25 ? 0.06 * Math.sin(clock * 23) : 0;
-      var r = (LIGHT_MIN + (LIGHT_MAX - LIGHT_MIN) * f + flicker + flash * 0.8) * tile;
-      var g = ctx.createRadialGradient(px, py, 0, px, py, r);
-      g.addColorStop(0, "rgba(" + colors.dark + "," + CENTER_DARKNESS + ")");
-      g.addColorStop(0.5, "rgba(" + colors.dark + "," + (CENTER_DARKNESS + (1 - CENTER_DARKNESS) * 0.5) + ")");
-      g.addColorStop(1, "rgba(" + colors.dark + ",1)");
-      ctx.globalAlpha = darkness;
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, cssSize, cssSize);
-      ctx.globalAlpha = 1;
+      var bright = envelope(brightTime, ITEMS.bright.seconds, 0.3, 0.8) * BRIGHT_EXTRA;
+      var r = (LIGHT_MIN + (LIGHT_MAX - LIGHT_MIN) * f + flicker + flash * 0.8 + bright) * tile;
+      var lights = [{ x: px, y: py, r: r, k: 1 }];
+      var peeking = state === "peek" || (state === "paused" && pausedFrom === "peek");
+      if (peeking) {
+        var pk = envelope(ITEMS.peek.seconds - stateTimer, ITEMS.peek.seconds, 0.35, 0.3);
+        lights.push({ x: ox + (maze.exit.x * 2 + 1.5) * tile, y: oy + (maze.exit.y * 2 + 1.5) * tile, r: PEEK_LIGHT * tile, k: pk });
+      }
+      drawDarkness(lights);
+      drawBeacon(ox, oy, tile);
 
       if ((state === "playing" || state === "paused") && f < 0.25) {
         var edge = ctx.createRadialGradient(cssSize / 2, cssSize / 2, cssSize * 0.35, cssSize / 2, cssSize / 2, cssSize * 0.72);
@@ -1128,6 +1294,69 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
     ctx.fillStyle = colors.lamp;
     ctx.fillRect(px - s / 2, py - s / 2, s, s);
   }
+
+  // ---------- items ----------
+  // Uses per maze. Free for now; later the counts can come from purchases or rewarded ads.
+  // Items never change the star rules.
+  var ITEMS = {
+    memo:   { perLevel: 1, seconds: 2 },   // whole maze again for 2 s (or +2 s while still memorising)
+    peek:   { perLevel: 1, seconds: 2.4 }, // camera goes to the exit, lights it, comes back; lamp paused
+    bright: { perLevel: 1, seconds: 6 },   // lamp light +2.4 tiles
+    beacon: { perLevel: 1, seconds: 6 }    // exit blinks through the dark; arrow on the edge if off-screen
+  };
+  var ITEM_ORDER = ["memo", "peek", "bright", "beacon"];
+  var ITEM_KEYS = { Digit1: "memo", Digit2: "peek", Digit3: "bright", Digit4: "beacon" };
+  var BRIGHT_EXTRA = 2.4, PEEK_LIGHT = 3.2;
+  var itemLeft = {}, brightTime = 0, beaconTime = 0, itemSig = "";
+  function resetItems() {
+    for (var i = 0; i < ITEM_ORDER.length; i++) itemLeft[ITEM_ORDER[i]] = state === "home" ? 0 : ITEMS[ITEM_ORDER[i]].perLevel;
+    brightTime = 0; beaconTime = 0; itemSig = "";
+    renderItems();
+  }
+  function itemUsable(k) {
+    if (!itemLeft[k]) return false;
+    if (k === "memo") return state === "preview" || state === "fade" || state === "playing";
+    return state === "playing";
+  }
+  function renderItems() {
+    var sig = state + "|" + ITEM_ORDER.map(function (k) { return itemLeft[k] + (itemUsable(k) ? "u" : "") ; }).join(",") + "|" + (brightTime > 0) + (beaconTime > 0);
+    if (sig === itemSig) return;
+    itemSig = sig;
+    for (var i = 0; i < ITEM_ORDER.length; i++) {
+      var k = ITEM_ORDER[i], b = $("item-" + k);
+      b.disabled = !itemUsable(k);
+      b.querySelector(".count").textContent = String(itemLeft[k] || 0);
+      b.classList.toggle("on", (k === "bright" && brightTime > 0) || (k === "beacon" && beaconTime > 0) || (k === "peek" && state === "peek"));
+      b.classList.toggle("ready", k === "memo" && state === "preview" && itemLeft[k] > 0);
+    }
+  }
+  function useItem(k) {
+    if (!itemUsable(k)) return;
+    itemLeft[k]--;
+    if (k === "memo") {
+      if (state === "preview") stateTimer -= ITEMS.memo.seconds;
+      else {
+        state = "preview"; stateTimer = cfg.preview - ITEMS.memo.seconds; darkness = 0;
+        slideDir = null; dashing = false;
+        setMemo(true);
+      }
+    } else if (k === "peek") {
+      state = "peek"; stateTimer = 0; slideDir = null; dashing = false;
+    } else if (k === "bright") {
+      brightTime = ITEMS.bright.seconds;
+    } else if (k === "beacon") {
+      beaconTime = ITEMS.beacon.seconds;
+    }
+    Sound.item();
+    buzz(20);
+    renderItems();
+  }
+  ITEM_ORDER.forEach(function (k) {
+    var b = $("item-" + k);
+    b.addEventListener("pointerdown", function (e) { e.preventDefault(); useItem(k); });
+    b.addEventListener("click", function (e) { if (e.detail === 0) useItem(k); }); // keyboard Enter/Space
+    b.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+  });
 
   // ---------- stage select ----------
   function chapterStars(chapter) {
@@ -1181,6 +1410,7 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
   }
   function closeSelect() {
     el.select.hidden = true;
+    if (state === "home") { showHome(); return; }
     if (state === "paused") { el.pauseMenu.hidden = false; $("p-resume").focus(); }
   }
 
@@ -1238,7 +1468,8 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
   window.addEventListener("keydown", function (e) {
     if (e.code === "Escape") { e.preventDefault(); handleBack(); return; }
     if (e.code === "KeyP") { e.preventDefault(); if (!el.pauseMenu.hidden) resume(); else pause(); return; }
-    if (!el.select.hidden || state === "paused") return;
+    if (!el.select.hidden || state === "paused" || state === "home") return;
+    if (ITEM_KEYS[e.code]) { e.preventDefault(); useItem(ITEM_KEYS[e.code]); return; }
     if (e.code === "KeyR") { e.preventDefault(); startLevel(levelId); return; }
     if (e.code === "Space") { e.preventDefault(); dash(); return; }
     var name = keyMap[e.code];
@@ -1255,7 +1486,7 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
   });
   window.addEventListener("blur", function () { keysDown = []; padDir = null; refreshHeld(); });
   document.addEventListener("visibilitychange", function () {
-    if (document.hidden) { pause(); Sound.suspend(); }
+    if (document.hidden) { autoPause(); Sound.suspend(); }
     else Sound.resume();
   });
 
@@ -1353,13 +1584,16 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
     var rec = progress.free[freeSize];
     $("record").textContent = rec ? "탈출 " + rec.clears + "회 · ★★★ " + rec.three + "회" : "아직 기록 없음";
   }
-  function setMode(next) {
+  function setModeUI(next) {
     mode = next;
     $("mode-stage").setAttribute("aria-pressed", mode === "stage" ? "true" : "false");
     $("mode-free").setAttribute("aria-pressed", mode === "free" ? "true" : "false");
     $("open-select").hidden = mode !== "stage";
     $("sizes").hidden = mode !== "free";
     $("record").hidden = mode !== "free";
+  }
+  function setMode(next) {
+    setModeUI(next);
     if (mode === "free") { updateRecord(); newFree(); }
     else startLevel(furthestStage());
   }
@@ -1381,6 +1615,15 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
   $("pause").addEventListener("click", function () { Sound.click(); if (!el.pauseMenu.hidden) resume(); else pause(); });
   $("p-resume").addEventListener("click", resume);
   $("p-restart").addEventListener("click", function () { startLevel(levelId); });
+  $("p-quit").addEventListener("click", function () { Sound.click(); goHome(); });
+  $("h-continue").addEventListener("click", function () { Sound.click(); setMode("stage"); });
+  $("h-select").addEventListener("click", function () { Sound.click(); setModeUI("stage"); el.home.hidden = true; openSelect(); });
+  $("h-free").addEventListener("click", function () { Sound.click(); setMode("free"); });
+  $("h-settings").addEventListener("click", function () { Sound.click(); pause(); });
+  var Cap = window.Capacitor;
+  var nativeApp = !!(Cap && Cap.isNativePlatform && Cap.isNativePlatform() && Cap.Plugins && Cap.Plugins.App);
+  $("h-exit").hidden = !nativeApp;
+  $("h-exit").addEventListener("click", function () { if (nativeApp) Cap.Plugins.App.exitApp(); });
   $("open-select").addEventListener("click", openSelect);
   $("close-select").addEventListener("click", closeSelect);
   el.bonusBtn.addEventListener("click", function () { if (chapterBonusUnlocked(selChapter)) startLevel("b" + selChapter); });
@@ -1388,12 +1631,12 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
   window.addEventListener("resize", resize);
   if (window.ResizeObserver) new ResizeObserver(resize).observe(el.board);
 
-  startLevel(furthestStage());
+  goHome();
   requestAnimationFrame(tick);
 
   // Hook for a native wrapper (e.g. Android back button): returns true when handled.
-  window.LanternMaze = { back: handleBack, pause: pause, resume: resume };
-  window.__lanternMaze = { buildLevel: buildLevel, bfs: bfs, STAGES: STAGES, bonusConfig: bonusConfig, seedFor: seedFor, current: function () { return maze; }, state: function () { return state; } };
+  window.LanternMaze = { back: handleBack, pause: autoPause, resume: resume, home: goHome };
+  window.__lanternMaze = { buildLevel: buildLevel, bfs: bfs, STAGES: STAGES, bonusConfig: bonusConfig, seedFor: seedFor, current: function () { return maze; }, state: function () { return state; }, useItem: useItem, items: function () { return { left: itemLeft, bright: brightTime, beacon: beaconTime }; }, player: function () { return player; } };
 })();
 </script>
 
@@ -1405,7 +1648,8 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
   var App = Cap.Plugins && Cap.Plugins.App;
   if (!App) return;
   App.addListener("backButton", function () {
-    if (window.LanternMaze) window.LanternMaze.back();
+    // back() returns false on the home screen: then the back button closes the app.
+    if (window.LanternMaze && !window.LanternMaze.back()) App.exitApp();
   });
   App.addListener("pause", function () {
     if (window.LanternMaze) window.LanternMaze.pause();
