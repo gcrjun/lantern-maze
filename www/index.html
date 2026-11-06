@@ -144,6 +144,12 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
 .toggle small { font-family: var(--font-display); font-size: 0.72rem; color: var(--muted); }
 .toggle[aria-pressed="true"] { border-color: var(--lamp); }
 .toggle[aria-pressed="true"] small { color: var(--lamp); }
+.setting { display: grid; gap: 4px; text-align: left; font-size: 0.85rem; color: var(--muted); }
+.steps { display: grid; gap: 4px; }
+.steps.five { grid-template-columns: repeat(5, 1fr); }
+.steps.three { grid-template-columns: repeat(3, 1fr); }
+.step { padding: 7px 2px; border-radius: 6px; border: 1px solid var(--line); background: var(--floor); color: var(--muted); font-family: var(--font-body); font-size: 0.82rem; cursor: pointer; }
+.step[aria-pressed="true"] { border-color: var(--lamp); color: var(--night); background: var(--lamp); }
 
 .select { width: min(440px, 100%); text-align: left; }
 .chapters { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }
@@ -169,6 +175,14 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
 }
 .rotate-hint button { border: 0; background: transparent; color: var(--lamp); font-family: var(--font-display); cursor: pointer; }
 
+/* Short landscape phones: tighter menus so they fit the board. */
+@media (max-height: 450px) {
+  .card { gap: 6px; padding: 10px; }
+  .card h2 { font-size: 1.05rem; }
+  .toggle { padding: 4px; }
+  .step, .modes button, .chip { padding-block: 5px; }
+  .btn { padding: 7px 12px; }
+}
 /* Portrait fallback: top bar, board, then joystick (left) and dash (right). */
 @media (orientation: portrait) {
   .app {
@@ -236,6 +250,24 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
           <button class="chip" id="size-20" data-size="20" aria-pressed="false">20×20</button>
         </div>
         <span class="record" id="record" hidden></span>
+        <div class="setting">
+          <span>이동 속도</span>
+          <div class="steps five" id="speed-steps" role="group" aria-label="이동 속도">
+            <button class="step" data-value="1">느림</button>
+            <button class="step" data-value="2">2</button>
+            <button class="step" data-value="3">보통</button>
+            <button class="step" data-value="4">4</button>
+            <button class="step" data-value="5">빠름</button>
+          </div>
+        </div>
+        <div class="setting">
+          <span>조이스틱 민감도</span>
+          <div class="steps three" id="stick-steps" role="group" aria-label="조이스틱 민감도">
+            <button class="step" data-value="1">낮음</button>
+            <button class="step" data-value="2">보통</button>
+            <button class="step" data-value="3">높음</button>
+          </div>
+        </div>
         <div class="toggles">
           <button class="toggle" id="t-sfx" aria-pressed="true">효과음<small>켜짐</small></button>
           <button class="toggle" id="t-bgm" aria-pressed="true">배경음<small>켜짐</small></button>
@@ -310,7 +342,9 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
   var OIL_SECONDS = 5;
   var GRACE_SECONDS = 3;
   var FADE_SECONDS = 0.25;
-  var MOVE_SECONDS = 0.12;
+  // Player-adjustable: seconds per cell for speed levels 1–5, joystick dead zone (px) for sensitivity 1–3.
+  var SPEED_LEVELS = [0.30, 0.24, 0.18, 0.14, 0.10];
+  var STICK_DEAD_LEVELS = [24, 14, 7];
   // Light radius in tiles. Old start (3.2) = 10 on the brightness scale: full lamp = 20, never below 5.
   var LIGHT_MAX = 6.4;
   var LIGHT_MIN = 1.6;
@@ -353,6 +387,8 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
 
   var settings = readJson(SETTINGS_KEY) || {};
   ["sfx", "bgm", "vib"].forEach(function (key) { if (typeof settings[key] !== "boolean") settings[key] = true; });
+  if (!(settings.speed >= 1 && settings.speed <= 5)) settings.speed = 3;
+  if (!(settings.stick >= 1 && settings.stick <= 3)) settings.stick = 2;
   function saveSettings() { writeJson(SETTINGS_KEY, settings); }
 
   function starsFor(i) { return progress.stars[i] || 0; }
@@ -877,6 +913,7 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
     heldDir = null; keysDown = []; padDir = null; slideDir = null; dashing = false;
     releaseStick();
     renderToggles();
+    renderSteps();
     el.select.hidden = true;
     el.pauseMenu.hidden = false;
     $("p-resume").focus();
@@ -916,7 +953,7 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
     beatGlow = Math.max(0, beatGlow - dt * 3);
 
     if (moving) {
-      moving.t = Math.min(1, moving.t + dt / MOVE_SECONDS);
+      moving.t = Math.min(1, moving.t + dt / SPEED_LEVELS[settings.speed - 1]);
       drawPos.x = moving.from.x + (player.x - moving.from.x) * moving.t;
       drawPos.y = moving.from.y + (player.y - moving.from.y) * moving.t;
       if (moving.t < 1) return;
@@ -1130,6 +1167,27 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
     });
   });
 
+  // ---------- speed and joystick sensitivity ----------
+  function renderSteps() {
+    [["speed-steps", "speed"], ["stick-steps", "stick"]].forEach(function (pair) {
+      var buttons = $(pair[0]).querySelectorAll(".step");
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].setAttribute("aria-pressed", parseInt(buttons[i].getAttribute("data-value"), 10) === settings[pair[1]] ? "true" : "false");
+      }
+    });
+  }
+  [["speed-steps", "speed"], ["stick-steps", "stick"]].forEach(function (pair) {
+    var buttons = $(pair[0]).querySelectorAll(".step");
+    for (var i = 0; i < buttons.length; i++) {
+      buttons[i].addEventListener("click", function () {
+        settings[pair[1]] = parseInt(this.getAttribute("data-value"), 10);
+        saveSettings();
+        renderSteps();
+        Sound.click();
+      });
+    }
+  });
+
   // ---------- input ----------
   var keyMap = { ArrowUp: "up", KeyW: "up", ArrowDown: "down", KeyS: "down", ArrowLeft: "left", KeyA: "left", ArrowRight: "right", KeyD: "right" };
   var keysDown = [];
@@ -1180,7 +1238,7 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
   // drag past the dead zone to pick one of four directions. Each finger is tracked separately.
   var stickZone = $("stick-zone"), stickEl = $("stick"), knob = $("knob");
   var stickId = null, stickOrigin = null;
-  var STICK_RADIUS = 48, STICK_DEAD = 14;
+  var STICK_RADIUS = 48;
   function setStickDir(name) {
     if (padDir === name) return;
     padDir = name;
@@ -1210,7 +1268,7 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
     var d = Math.sqrt(dx * dx + dy * dy);
     var k = d > STICK_RADIUS ? STICK_RADIUS / d : 1;
     knob.style.transform = "translate(" + dx * k + "px," + dy * k + "px)";
-    if (d < STICK_DEAD) { setStickDir(null); return; }
+    if (d < STICK_DEAD_LEVELS[settings.stick - 1]) { setStickDir(null); return; }
     setStickDir(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up"));
   });
   function endStick(e) { if (e.pointerId === stickId) releaseStick(); }
@@ -1301,7 +1359,6 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
   window.__lanternMaze = { buildLevel: buildLevel, bfs: bfs, STAGES: STAGES, bonusConfig: bonusConfig, seedFor: seedFor, current: function () { return maze; }, state: function () { return state; } };
 })();
 </script>
-
 
 <script>
 /* Native app glue (Capacitor): Android back button and app pause. Does nothing in a browser. */
