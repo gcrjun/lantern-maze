@@ -1,0 +1,8 @@
+{
+  "appId": "kr.lanternmaze.game",
+  "appName": "Lantern Maze",
+  "webDir": "www",
+  "android": {
+    "backgroundColor": "#07080d"
+  }
+}

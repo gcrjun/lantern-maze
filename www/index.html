@@ -1,0 +1,1322 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}*{box-sizing:border-box}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Lantern Maze</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="fonts/fonts.css">
+<style>
+/* Layout: landscape-first. Left thumb column (pause + joystick) | square board | right thumb column (lamp, moves, dash).
+   Portrait falls back to: top bar / board / joystick + dash. */
+:root {
+  --night: #07080d;
+  --stone: #6f7c99;
+  --floor: #141824;
+  --lamp: #ffcf5a;
+  --oil: #ff9f3a;
+  --exit: #39d98a;
+  --danger: #ff5a4f;
+  --ink: #e7e9f2;
+  --muted: #8a92a8;
+  --line: #262c3d;
+  --font-display: "Chakra Petch", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Gowun Dodum", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  color-scheme: dark;
+}
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body {
+  background: var(--night);
+  color: var(--ink);
+  font-family: var(--font-body);
+  padding-left: max(12px, env(safe-area-inset-left, 0px));
+  padding-right: max(12px, env(safe-area-inset-right, 0px));
+  -webkit-tap-highlight-color: transparent;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.app {
+  box-sizing: border-box;
+  height: 100%;
+  padding-block: 10px;
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) auto minmax(140px, 1fr);
+  grid-template-areas: "left board right";
+  column-gap: 14px;
+  align-items: stretch;
+}
+.left, .right { display: grid; min-width: 0; min-height: 0; }
+.left { grid-area: left; grid-template-rows: auto 1fr; gap: 10px; }
+.right { grid-area: right; grid-template-rows: auto 1fr; gap: 10px; }
+
+.corner { display: flex; align-items: center; gap: 10px; }
+.icon {
+  width: 48px; height: 48px; flex: none;
+  display: grid; place-items: center;
+  border-radius: 10px; border: 1px solid var(--line);
+  background: var(--floor); color: var(--ink);
+  font-family: var(--font-display); font-size: 1.15rem; cursor: pointer;
+}
+.label { display: grid; gap: 1px; min-width: 0; }
+.label small, .hud small { color: var(--muted); font-size: 0.72rem; letter-spacing: 0.08em; }
+.label b, .hud b { font-family: var(--font-display); font-size: 1.15rem; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.stick-zone { position: relative; border-radius: 14px; touch-action: none; cursor: grab; min-height: 140px; }
+.stick {
+  position: absolute; left: 50%; top: 62%;
+  width: 120px; height: 120px; margin: -60px 0 0 -60px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  background: rgba(20, 24, 36, 0.6);
+  opacity: 0.55;
+  pointer-events: none;
+}
+.stick.active { opacity: 1; border-color: var(--lamp); }
+.knob {
+  position: absolute; left: 50%; top: 50%;
+  width: 52px; height: 52px; margin: -26px 0 0 -26px;
+  border-radius: 50%; background: var(--lamp);
+}
+.zone-hint { position: absolute; left: 0; right: 0; bottom: 4px; margin: 0; text-align: center; color: var(--muted); font-size: 0.75rem; }
+
+.hud { display: grid; gap: 8px; align-content: start; }
+.hud-row { display: grid; gap: 3px; }
+.goal { color: var(--lamp); font-size: 0.8rem; font-family: var(--font-display); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.gauge { height: 10px; border-radius: 5px; background: var(--floor); border: 1px solid var(--line); overflow: hidden; }
+.gauge i { display: block; height: 100%; width: 100%; background: var(--lamp); transform-origin: left center; }
+.gauge.low i { background: var(--danger); }
+.hud small.memo { color: var(--lamp); font-family: var(--font-display); font-weight: 600; font-size: 0.8rem; }
+
+.dash-zone { display: grid; place-items: center; min-height: 120px; }
+.dash {
+  width: 96px; height: 96px; border-radius: 50%;
+  border: 2px solid var(--lamp); background: rgba(255, 207, 90, 0.12);
+  color: var(--lamp); font-family: var(--font-display); font-weight: 600; font-size: 1.05rem;
+  cursor: pointer; touch-action: none;
+}
+.dash:active, .dash.on { background: var(--lamp); color: var(--night); }
+
+.board {
+  grid-area: board;
+  position: relative;
+  align-self: center;
+  aspect-ratio: 1;
+  width: min(calc(100vh - 20px), calc(100vw - 360px));
+  width: min(calc(100dvh - 20px), calc(100vw - 360px));
+}
+canvas { display: block; width: 100%; height: 100%; border-radius: 4px; touch-action: none; outline: none; }
+.board.memo canvas { box-shadow: 0 0 0 2px var(--lamp); }
+.banner { position: absolute; inset: 0; display: grid; justify-items: center; align-items: start; padding-top: 10px; pointer-events: none; }
+.banner p { margin: 0; padding: 8px 14px; border-radius: 6px; background: rgba(7, 8, 13, 0.75); font-family: var(--font-display); }
+
+.btn {
+  font-family: var(--font-display); font-weight: 600; font-size: 0.95rem;
+  padding: 9px 14px; border-radius: 8px; border: 0;
+  background: var(--lamp); color: var(--night); cursor: pointer;
+}
+.btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+
+.overlay { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(7, 8, 13, 0.75); overflow-y: auto; padding: 10px; }
+.overlay.top { place-items: start center; }
+.card { background: var(--night); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: grid; gap: 10px; text-align: center; width: min(360px, 100%); }
+.card h2 { margin: 0; font-family: var(--font-display); font-size: 1.25rem; }
+.card h2.win { color: var(--exit); }
+.card h2.lose { color: var(--danger); }
+.card p { margin: 0; color: var(--muted); font-variant-numeric: tabular-nums; line-height: 1.5; }
+.card .row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.stars { font-size: 2rem; letter-spacing: 0.15em; color: var(--line); }
+.stars .on { color: var(--lamp); }
+.note { color: var(--lamp) !important; }
+
+.modes { display: flex; justify-content: center; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.modes button { flex: 1; font-family: var(--font-display); font-size: 0.85rem; padding: 7px 10px; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
+.modes button[aria-pressed="true"] { background: var(--lamp); color: var(--night); font-weight: 600; }
+.sizes { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+.chip { font-family: var(--font-display); font-size: 0.82rem; padding: 6px 9px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer; }
+.chip[aria-pressed="true"] { color: var(--ink); border-color: var(--lamp); }
+.record { color: var(--muted); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.toggles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.toggle { display: grid; gap: 2px; padding: 7px 4px; border-radius: 8px; border: 1px solid var(--line); background: var(--floor); color: var(--ink); font-family: var(--font-body); font-size: 0.88rem; cursor: pointer; }
+.toggle small { font-family: var(--font-display); font-size: 0.72rem; color: var(--muted); }
+.toggle[aria-pressed="true"] { border-color: var(--lamp); }
+.toggle[aria-pressed="true"] small { color: var(--lamp); }
+
+.select { width: min(440px, 100%); text-align: left; }
+.chapters { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }
+.chapter { padding: 5px 2px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: var(--muted); font-family: var(--font-display); font-size: 0.78rem; cursor: pointer; display: grid; gap: 1px; }
+.chapter small { font-size: 0.66rem; color: var(--muted); }
+.chapter[aria-pressed="true"] { border-color: var(--lamp); color: var(--ink); }
+.chapter:disabled { opacity: 0.35; cursor: default; }
+.grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.stage { display: grid; gap: 2px; place-items: center; padding: 6px 2px; border-radius: 8px; border: 1px solid var(--line); background: var(--floor); color: var(--ink); cursor: pointer; font-family: var(--font-display); font-size: 1rem; }
+.stage small { font-size: 0.7rem; color: var(--line); letter-spacing: 0.1em; }
+.stage small .on { color: var(--lamp); }
+.stage:disabled { opacity: 0.35; cursor: default; }
+.special { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.special .stage { font-size: 0.88rem; padding: 9px 6px; text-align: center; }
+.special .bonus:not(:disabled) { border-color: var(--lamp); color: var(--lamp); }
+.special small { color: var(--muted); letter-spacing: 0; }
+
+.rotate-hint {
+  position: fixed; left: 50%; bottom: max(12px, env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  display: flex; gap: 10px; align-items: center;
+  padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--floor);
+  font-size: 0.85rem; color: var(--ink); z-index: 5; max-width: calc(100vw - 32px);
+}
+.rotate-hint button { border: 0; background: transparent; color: var(--lamp); font-family: var(--font-display); cursor: pointer; }
+
+/* Portrait fallback: top bar, board, then joystick (left) and dash (right). */
+@media (orientation: portrait) {
+  .app {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto 1fr;
+    grid-template-areas: "corner hud" "board board" "stick dash";
+    row-gap: 10px;
+  }
+  .left, .right { display: contents; }
+  .corner { grid-area: corner; }
+  .hud { grid-area: hud; }
+  .stick-zone { grid-area: stick; }
+  .dash-zone { grid-area: dash; }
+  .board {
+    justify-self: center;
+    width: min(100%, calc(100vh - 330px));
+    width: min(100%, calc(100dvh - 330px));
+  }
+}
+</style>
+
+</head>
+<body>
+<div class="app">
+  <aside class="left">
+    <div class="corner">
+      <button class="icon" id="pause" aria-label="일시정지">Ⅱ</button>
+      <div class="label"><small id="kind-label">스테이지</small><b id="stage-label">1</b></div>
+    </div>
+    <div class="stick-zone" id="stick-zone" aria-label="이동 조이스틱. 왼손 엄지로 끌어서 움직입니다.">
+      <div class="stick" id="stick"><div class="knob" id="knob"></div></div>
+      <p class="zone-hint">왼손 엄지로 끌어서 이동</p>
+    </div>
+  </aside>
+
+  <div class="board" id="board">
+    <canvas id="game" tabindex="0" aria-label="미로 게임 화면. 방향키로 이동합니다."></canvas>
+    <div class="banner" id="banner" hidden><p id="banner-text">기억하세요!</p></div>
+
+    <div class="overlay" id="result" hidden>
+      <div class="card">
+        <h2 id="result-title" class="win">탈출 성공</h2>
+        <div class="stars" id="result-stars" aria-label="별 0개"><span>★</span><span>★</span><span>★</span></div>
+        <p id="result-line">0번 이동 · 최단 0</p>
+        <p class="note" id="result-note" hidden></p>
+        <div class="row">
+          <button class="btn ghost" id="retry">다시 하기</button>
+          <button class="btn" id="next">다음 스테이지</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="overlay top" id="pause-menu" hidden>
+      <div class="card">
+        <h2>일시정지</h2>
+        <div class="modes" role="group" aria-label="게임 모드">
+          <button id="mode-stage" aria-pressed="true">스테이지</button>
+          <button id="mode-free" aria-pressed="false">자유 플레이</button>
+        </div>
+        <button class="btn ghost" id="open-select">스테이지 선택</button>
+        <div class="sizes" id="sizes" role="group" aria-label="미로 크기" hidden>
+          <button class="chip" id="size-7" data-size="7" aria-pressed="false">7×7</button>
+          <button class="chip" id="size-10" data-size="10" aria-pressed="true">10×10</button>
+          <button class="chip" id="size-15" data-size="15" aria-pressed="false">15×15</button>
+          <button class="chip" id="size-20" data-size="20" aria-pressed="false">20×20</button>
+        </div>
+        <span class="record" id="record" hidden></span>
+        <div class="toggles">
+          <button class="toggle" id="t-sfx" aria-pressed="true">효과음<small>켜짐</small></button>
+          <button class="toggle" id="t-bgm" aria-pressed="true">배경음<small>켜짐</small></button>
+          <button class="toggle" id="t-vib" aria-pressed="true">진동<small>켜짐</small></button>
+        </div>
+        <div class="row">
+          <button class="btn ghost" id="p-restart">다시 하기</button>
+          <button class="btn" id="p-resume">계속하기</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="overlay top" id="select" hidden>
+      <div class="card select">
+        <h2>스테이지 선택</h2>
+        <p id="select-summary">모은 별 0 / 300</p>
+        <div class="chapters" id="chapters" role="group" aria-label="챕터"></div>
+        <div class="grid" id="stage-grid"></div>
+        <div class="special">
+          <button class="stage bonus" id="bonus-btn" disabled>보너스 판<small>모두 ★★★ 필요</small></button>
+          <button class="stage" disabled>추적자 모드<small>준비 중</small></button>
+        </div>
+        <button class="btn ghost" id="close-select">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <aside class="right">
+    <div class="hud">
+      <div class="hud-row"><small id="lamp-label">등불</small><div class="gauge" id="gauge"><i id="gauge-fill"></i></div></div>
+      <div class="hud-row"><small>이동</small><b id="moves">0</b><span class="goal" id="goal">★★★ 0 이하</span></div>
+    </div>
+    <div class="dash-zone">
+      <button class="dash" id="dash" aria-label="질주: 다음 갈림길까지 한 번에 이동">질주</button>
+    </div>
+  </aside>
+
+  <div class="rotate-hint" id="rotate-hint" hidden>
+    <span>휴대폰을 가로로 돌리면 더 편하게 할 수 있어요.</span>
+    <button id="hint-close">닫기</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- rules ----------
+  // 100 stages in 10 chapters. Each chapter steps up size, shortens the preview and burns the lamp faster.
+  var STAGES = [];
+  for (var si = 0; si < 100; si++) {
+    var ch = Math.floor(si / 10), k = si % 10;
+    var sz = Math.min(20, 7 + Math.floor(ch * 1.4) + (k >= 5 ? 1 : 0));
+    STAGES.push({
+      size: sz,
+      preview: Math.max(0.5, Math.round((1.6 - ch * 0.1 - k * 0.01) * 100) / 100),
+      secPerCell: Math.max(0.62, Math.round((1.4 - ch * 0.08 - k * 0.008) * 1000) / 1000),
+      oils: si === 0 ? 0 : Math.min(5, 1 + Math.floor((sz - 7) / 3))
+    });
+  }
+  var CHAPTERS = 10;
+  function bonusConfig(chapter) {
+    var last = STAGES[chapter * 10 + 9];
+    return { size: Math.min(22, last.size + 2), preview: Math.max(0.45, last.preview - 0.1), secPerCell: Math.max(0.6, last.secPerCell - 0.03), oils: Math.min(6, last.oils + 1) };
+  }
+  var FREE = {
+    7:  { size: 7,  preview: 1.2, secPerCell: 1.10, oils: 1 },
+    10: { size: 10, preview: 1.0, secPerCell: 0.90, oils: 2 },
+    15: { size: 15, preview: 0.8, secPerCell: 0.75, oils: 3 },
+    20: { size: 20, preview: 0.7, secPerCell: 0.70, oils: 4 }
+  };
+  var OIL_SECONDS = 5;
+  var GRACE_SECONDS = 3;
+  var FADE_SECONDS = 0.25;
+  var MOVE_SECONDS = 0.12;
+  // Light radius in tiles. Old start (3.2) = 10 on the brightness scale: full lamp = 20, never below 5.
+  var LIGHT_MAX = 6.4;
+  var LIGHT_MIN = 1.6;
+  var CENTER_DARKNESS = 0.45;
+  var MIN_SWIPE_PX = 24;
+  var STORE_KEY = "lantern-maze-progress-v2";
+  var SETTINGS_KEY = "lantern-maze-settings-v1";
+
+  var DIRS = { up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 } };
+  var DIR_LIST = [DIRS.up, DIRS.right, DIRS.down, DIRS.left];
+
+  var canvas = document.getElementById("game");
+  var ctx = canvas.getContext("2d");
+  function $(id) { return document.getElementById(id); }
+  var el = {
+    stage: $("stage-label"), kind: $("kind-label"), moves: $("moves"), goal: $("goal"),
+    gauge: $("gauge"), gaugeFill: $("gauge-fill"),
+    banner: $("banner"), bannerText: $("banner-text"),
+    result: $("result"), resultTitle: $("result-title"), resultStars: $("result-stars"),
+    resultLine: $("result-line"), resultNote: $("result-note"),
+    retry: $("retry"), next: $("next"),
+    pauseMenu: $("pause-menu"),
+    select: $("select"), chapters: $("chapters"), grid: $("stage-grid"), summary: $("select-summary"), bonusBtn: $("bonus-btn"),
+    board: $("board")
+  };
+  var colors = { stone: "#6f7c99", floor: "#141824", lamp: "#ffcf5a", oil: "#ff9f3a", exit: "#39d98a", danger: "255,90,79" };
+
+  // ---------- storage ----------
+  function readJson(key) {
+    try { var raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
+  }
+  function writeJson(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* storage unavailable */ }
+  }
+  var progress = readJson(STORE_KEY) || {};
+  if (!progress.stars) progress.stars = {};
+  if (!progress.bonus) progress.bonus = {};
+  if (!progress.free) progress.free = {};
+  function saveProgress() { writeJson(STORE_KEY, progress); }
+
+  var settings = readJson(SETTINGS_KEY) || {};
+  ["sfx", "bgm", "vib"].forEach(function (key) { if (typeof settings[key] !== "boolean") settings[key] = true; });
+  function saveSettings() { writeJson(SETTINGS_KEY, settings); }
+
+  function starsFor(i) { return progress.stars[i] || 0; }
+  function isUnlocked(i) { return i === 0 || starsFor(i - 1) > 0; }
+  function chapterBonusUnlocked(chapter) {
+    for (var i = chapter * 10; i < chapter * 10 + 10; i++) if (starsFor(i) < 3) return false;
+    return true;
+  }
+
+  // ---------- sound (synthesised, no audio files) ----------
+  var Sound = (function () {
+    var ac = null, master, sfxBus, bgmBus, level = 0;
+
+    // Background music: two original classical-style pieces that alternate, each played twice.
+    // A: sonatina in C major (4/4, Alberti bass, piano-like). B: minuet in G major (3/4, harpsichord-like).
+    // Note lists are [MIDI note, length in eighths]; 0 = rest.
+    var PIECES = [
+      {
+        name: "sonatina", eighth: 60 / 92 / 2, perBar: 8, timbre: "piano",
+        melody: [
+          [72, 2], [76, 2], [79, 3], [77, 1],
+          [76, 2], [74, 2], [74, 4],
+          [79, 2], [81, 1], [79, 1], [77, 1], [76, 1], [74, 1], [72, 1],
+          [77, 2], [81, 2], [79, 2], [77, 2],
+          [76, 2], [79, 2], [84, 3], [83, 1],
+          [81, 2], [79, 2], [76, 4],
+          [74, 1], [76, 1], [77, 1], [79, 1], [77, 2], [74, 2],
+          [72, 6], [0, 2]
+        ],
+        // Alberti bass: root, fifth, third, fifth on every eighth.
+        alberti: [
+          [48, 55, 52, 55], [43, 50, 47, 50], [48, 55, 52, 55], [41, 48, 45, 48],
+          [48, 55, 52, 55], [45, 52, 48, 52], [43, 50, 47, 53], [48, 55, 52, 55]
+        ]
+      },
+      {
+        name: "minuet", eighth: 60 / 126 / 2, perBar: 6, timbre: "harpsichord",
+        melody: [
+          [71, 2], [74, 2], [79, 2],
+          [78, 2], [76, 1], [74, 1], [76, 2],
+          [74, 1], [72, 1], [71, 2], [67, 2],
+          [72, 2], [76, 2], [74, 1], [72, 1],
+          [71, 2], [74, 1], [79, 1], [78, 1], [79, 1],
+          [81, 2], [78, 2], [74, 2],
+          [72, 1], [71, 1], [69, 2], [66, 2],
+          [67, 4], [0, 2]
+        ],
+        bass: [
+          [43, 4], [50, 2], [38, 4], [45, 2], [43, 4], [47, 2], [48, 4], [52, 2],
+          [43, 4], [50, 2], [38, 4], [45, 2], [38, 4], [48, 2], [43, 4], [0, 2]
+        ]
+      }
+    ];
+    PIECES.forEach(function (piece) {
+      var total = 0, i;
+      piece.melody.forEach(function (n) { total += n[1]; });
+      piece.length = total;
+      piece.steps = [];
+      for (i = 0; i < total; i++) piece.steps.push([]);
+      var t = 0;
+      piece.melody.forEach(function (n) { if (n[0]) piece.steps[t].push({ m: n[0], len: n[1], part: "melody" }); t += n[1]; });
+      if (piece.alberti) {
+        for (i = 0; i < total; i++) {
+          var chord = piece.alberti[Math.floor(i / piece.perBar) % piece.alberti.length];
+          piece.steps[i].push({ m: chord[i % 4], len: 1, part: "bass" });
+        }
+      }
+      if (piece.bass) {
+        t = 0;
+        piece.bass.forEach(function (n) { if (n[0] && t < total) piece.steps[t].push({ m: n[0], len: n[1], part: "bass" }); t += n[1]; });
+      }
+    });
+    var song = { piece: 0, rep: 0, step: 0 }, nextStepAt = 0;
+
+    function midi(n) { return 440 * Math.pow(2, (n - 69) / 12); }
+
+    function voice(freq, at, dur, type, vol, cutoff) {
+      var o = ac.createOscillator(), g = ac.createGain(), f = ac.createBiquadFilter();
+      o.type = type;
+      o.frequency.setValueAtTime(freq, at);
+      f.type = "lowpass"; f.frequency.value = cutoff;
+      g.gain.setValueAtTime(0.0001, at);
+      g.gain.exponentialRampToValueAtTime(vol, at + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+      o.connect(f); f.connect(g); g.connect(bgmBus);
+      o.start(at); o.stop(at + dur + 0.03);
+    }
+
+    function playNote(piece, n, at) {
+      var f = midi(n.m), held = n.len * piece.eighth;
+      if (piece.timbre === "piano") {
+        if (n.part === "melody") {
+          voice(f, at, Math.min(1.8, held * 1.4 + 0.25), "triangle", 0.07, 3200);
+          voice(f * 2, at, Math.min(0.8, held * 0.8 + 0.1), "sine", 0.018, 6000);
+        } else {
+          voice(f, at, held * 1.6 + 0.15, "triangle", 0.035, 1500);
+        }
+      } else {
+        // Harpsichord: bright, plucked, fast decay.
+        if (n.part === "melody") {
+          voice(f, at, Math.min(0.9, held * 0.9 + 0.2), "sawtooth", 0.028, 3600);
+          voice(f * 2, at, 0.25, "square", 0.008, 5000);
+        } else {
+          voice(f, at, Math.min(1.2, held * 0.9 + 0.2), "sawtooth", 0.03, 1400);
+        }
+      }
+    }
+
+    function scheduleStep(at) {
+      var piece = PIECES[song.piece];
+      var notes = piece.steps[song.step];
+      for (var i = 0; i < notes.length; i++) playNote(piece, notes[i], at);
+      var duration = piece.eighth;
+      song.step++;
+      if (song.step >= piece.length) {
+        song.step = 0;
+        song.rep++;
+        if (song.rep >= 2) { song.rep = 0; song.piece = (song.piece + 1) % PIECES.length; duration += piece.eighth * 2; }
+      }
+      return duration;
+    }
+
+    function ensure() {
+      if (!ac) {
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return null;
+        try { ac = new AC(); } catch (e) { return null; }
+        master = ac.createGain(); master.gain.value = 0.8; master.connect(ac.destination);
+        sfxBus = ac.createGain(); sfxBus.connect(master);
+        bgmBus = ac.createGain(); bgmBus.gain.value = 0; bgmBus.connect(master);
+      }
+      if (ac.state === "suspended") { try { ac.resume(); } catch (e) { /* ignore */ } }
+      return ac;
+    }
+
+    function tone(freq, dur, type, vol, slideTo, delay, bus) {
+      if (!ac) return;
+      var target = bus || sfxBus;
+      if (target === sfxBus && !settings.sfx) return;
+      var t = ac.currentTime + (delay || 0);
+      var o = ac.createOscillator(), g = ac.createGain();
+      o.type = type || "sine";
+      o.frequency.setValueAtTime(freq, t);
+      if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vol, t + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g); g.connect(target);
+      o.start(t); o.stop(t + dur + 0.03);
+    }
+
+    function setLevel(value) {
+      level = value;
+      if (!ac) return;
+      var v = settings.bgm ? value : 0;
+      bgmBus.gain.cancelScheduledValues(ac.currentTime);
+      bgmBus.gain.setTargetAtTime(v, ac.currentTime, 0.4);
+    }
+
+    return {
+      unlock: function () { if (ensure()) setLevel(level || 1); },
+      // Look-ahead scheduler: queues the next 0.2 s of notes each frame so timing stays steady.
+      update: function () {
+        if (!ac || ac.state !== "running") return;
+        if (!settings.bgm || level <= 0) { nextStepAt = 0; return; }
+        if (nextStepAt < ac.currentTime) nextStepAt = ac.currentTime + 0.05;
+        while (nextStepAt < ac.currentTime + 0.2) nextStepAt += scheduleStep(nextStepAt);
+      },
+      setLevel: setLevel,
+      refresh: function () { setLevel(level); },
+      suspend: function () { if (ac && ac.state === "running") { try { ac.suspend(); } catch (e) { /* ignore */ } } },
+      resume: function () { if (ac && ac.state === "suspended") { try { ac.resume(); } catch (e) { /* ignore */ } } },
+      step: function (n) { tone(n % 2 ? 380 : 420, 0.05, "triangle", 0.03); },
+      bump: function () { tone(110, 0.12, "sine", 0.22, 60); },
+      oil: function () { tone(660, 0.12, "triangle", 0.12); tone(880, 0.12, "triangle", 0.12, null, 0.08); tone(1320, 0.25, "triangle", 0.1, null, 0.16); },
+      dark: function () { tone(320, 0.5, "sine", 0.08, 90); },
+      beat: function () { tone(70, 0.14, "sine", 0.35, 45); tone(70, 0.12, "sine", 0.22, 45, 0.18); },
+      win: function () { [523.25, 659.25, 783.99, 1046.5].forEach(function (f, i) { tone(f, 0.35, "triangle", 0.13, null, i * 0.1); }); },
+      lose: function () { tone(440, 0.9, "sawtooth", 0.05, 110); tone(220, 0.9, "sine", 0.1, 55, 0.05); },
+      click: function () { tone(900, 0.04, "square", 0.025); }
+    };
+  })();
+
+  function buzz(pattern) {
+    if (!settings.vib) return;
+    try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) { /* not supported */ }
+  }
+
+  // ---------- maze generation (seeded, so each stage keeps the same maze) ----------
+  function makeRng(seed) {
+    var a = seed >>> 0;
+    return function () {
+      a = (a + 0x6D2B79F5) >>> 0;
+      var t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function carve(n, rng) {
+    var t = n * 2 + 1, walls = [], visited = [], x, y;
+    for (y = 0; y < t; y++) { walls.push([]); for (x = 0; x < t; x++) walls[y].push(true); }
+    for (y = 0; y < n; y++) { visited.push([]); for (x = 0; x < n; x++) visited[y].push(false); }
+    var styles = [0.95, 0.75, 0.5];
+    var newestBias = styles[Math.floor(rng() * styles.length)];
+    var first = { x: Math.floor(rng() * n), y: Math.floor(rng() * n) };
+    var active = [first];
+    visited[first.y][first.x] = true;
+    walls[first.y * 2 + 1][first.x * 2 + 1] = false;
+    while (active.length) {
+      var idx = rng() < newestBias ? active.length - 1 : Math.floor(rng() * active.length);
+      var cur = active[idx], options = [];
+      for (var d = 0; d < 4; d++) {
+        var nx = cur.x + DIR_LIST[d].x, ny = cur.y + DIR_LIST[d].y;
+        if (nx >= 0 && ny >= 0 && nx < n && ny < n && !visited[ny][nx]) options.push(DIR_LIST[d]);
+      }
+      if (!options.length) { active.splice(idx, 1); continue; }
+      var pick = options[Math.floor(rng() * options.length)];
+      var next = { x: cur.x + pick.x, y: cur.y + pick.y };
+      walls[cur.y * 2 + 1 + pick.y][cur.x * 2 + 1 + pick.x] = false;
+      walls[next.y * 2 + 1][next.x * 2 + 1] = false;
+      visited[next.y][next.x] = true;
+      active.push(next);
+    }
+    var inner = [];
+    for (y = 1; y < t - 1; y++) for (x = 1; x < t - 1; x++) if (walls[y][x] && (x % 2) !== (y % 2)) inner.push({ x: x, y: y });
+    for (var i = inner.length - 1; i > 0; i--) { var j = Math.floor(rng() * (i + 1)); var tmp = inner[i]; inner[i] = inner[j]; inner[j] = tmp; }
+    var loops = Math.round(n * n * 0.02);
+    for (var q = 0; q < loops && q < inner.length; q++) walls[inner[q].y][inner[q].x] = false;
+    return { n: n, tiles: t, walls: walls };
+  }
+
+  function bfs(m, sources) {
+    var n = m.n, dist = [], parent = [], y, x;
+    for (y = 0; y < n; y++) { dist.push([]); parent.push([]); for (x = 0; x < n; x++) { dist[y].push(-1); parent[y].push(null); } }
+    var queue = [];
+    for (var s = 0; s < sources.length; s++) { dist[sources[s].y][sources[s].x] = 0; queue.push(sources[s]); }
+    for (var q = 0; q < queue.length; q++) {
+      var c = queue[q];
+      for (var d = 0; d < 4; d++) {
+        var dir = DIR_LIST[d];
+        if (m.walls[c.y * 2 + 1 + dir.y][c.x * 2 + 1 + dir.x]) continue;
+        var nb = { x: c.x + dir.x, y: c.y + dir.y };
+        if (dist[nb.y][nb.x] !== -1) continue;
+        dist[nb.y][nb.x] = dist[c.y][c.x] + 1;
+        parent[nb.y][nb.x] = c;
+        queue.push(nb);
+      }
+    }
+    return { dist: dist, parent: parent };
+  }
+
+  function buildLevel(cfg, seed) {
+    var rng = makeRng(seed);
+    var n = cfg.size, best = null;
+    for (var attempt = 0; attempt < 30; attempt++) {
+      var m = carve(n, rng);
+      var start = { x: Math.floor(rng() * n), y: Math.floor(rng() * n) };
+      var info = bfs(m, [start]);
+      var maxDist = 0, x, y;
+      for (y = 0; y < n; y++) for (x = 0; x < n; x++) maxDist = Math.max(maxDist, info.dist[y][x]);
+      var far = [];
+      for (y = 0; y < n; y++) for (x = 0; x < n; x++) if (info.dist[y][x] >= Math.ceil(maxDist * 0.9)) far.push({ x: x, y: y });
+      var exit = far[Math.floor(rng() * far.length)];
+      var path = [], onEdge = 0, cell = exit;
+      while (cell) {
+        path.push(cell);
+        if (cell.x === 0 || cell.y === 0 || cell.x === n - 1 || cell.y === n - 1) onEdge++;
+        cell = info.parent[cell.y][cell.x];
+      }
+      m.start = start; m.exit = exit; m.path = path;
+      m.shortest = path.length - 1;
+      m.edgeShare = onEdge / path.length;
+      if (m.shortest >= Math.round(n * n * 0.3) && m.edgeShare <= 0.4) { best = m; break; }
+      if (!best || m.shortest - m.edgeShare * n > best.shortest - best.edgeShare * n) best = m;
+    }
+    placeOils(best, cfg.oils, rng);
+    var detour = 0;
+    for (var o = 0; o < best.oils.length; o++) detour += best.oils[o].offset * 2;
+    best.lampMax = best.shortest * cfg.secPerCell + GRACE_SECONDS;
+    best.star3 = best.shortest + detour + Math.max(4, Math.round(best.shortest * 0.2));
+    best.star2 = Math.round(best.shortest * 1.7) + detour;
+    return best;
+  }
+
+  // Oil sits 1–3 steps off the shortest route: a small detour that pays back light.
+  function placeOils(m, count, rng) {
+    m.oils = [];
+    if (!count) return;
+    var n = m.n, onPath = {}, i;
+    for (i = 0; i < m.path.length; i++) onPath[m.path[i].x + "," + m.path[i].y] = i;
+    var off = bfs(m, m.path);
+    var near = [], loose = [];
+    for (var y = 0; y < n; y++) for (var x = 0; x < n; x++) {
+      if ((x + "," + y) in onPath) continue;
+      var c = { x: x, y: y, offset: off.dist[y][x] };
+      if (c.offset >= 1 && c.offset <= 3) near.push(c); else loose.push(c);
+    }
+    var pool = near.length >= count ? near : near.concat(loose);
+    for (i = pool.length - 1; i > 0; i--) { var j = Math.floor(rng() * (i + 1)); var t = pool[i]; pool[i] = pool[j]; pool[j] = t; }
+    for (i = 0; i < pool.length && m.oils.length < count; i++) {
+      var p = pool[i], ok = true;
+      for (var k = 0; k < m.oils.length; k++) if (Math.abs(m.oils[k].x - p.x) + Math.abs(m.oils[k].y - p.y) < 3) ok = false;
+      if (ok) m.oils.push({ x: p.x, y: p.y, offset: p.offset, taken: false });
+    }
+  }
+
+  // ---------- game state ----------
+  // level id: a number 0–99 for stages, "b0".."b9" for chapter bonuses, "free" for free play.
+  var levelId = 0;
+  var cfg = STAGES[0];
+  var maze = null;
+  var state = "preview";
+  var pausedFrom = null;
+  var stateTimer = 0;
+  var oil = 0;
+  var moveCount = 0;
+  var player = { x: 0, y: 0 };
+  var drawPos = { x: 0, y: 0 };
+  var moving = null;
+  var slideDir = null;
+  var heldDir = null;
+  var darkness = 0;
+  var lastFrame = 0;
+  var flash = 0;
+  var clock = 0;
+  var beatPhase = 0;
+  var beatGlow = 0;
+  var lastBump = { dir: null, at: -1 };
+  var mode = "stage";
+  var dashing = false;
+  var lastDir = null;
+  var freeSize = 10;
+  var freeSeed = 1;
+  var selChapter = 0;
+  var bonusJustOpened = null;
+
+  function isBonus(id) { return typeof id === "string" && id.charAt(0) === "b"; }
+  function bonusChapter(id) { return parseInt(id.slice(1), 10); }
+  function seedFor(id) {
+    if (id === "free") return freeSeed;
+    if (isBonus(id)) return 90210 + bonusChapter(id) * 31;
+    return 1000 + id * 7919;
+  }
+  function configFor(id) {
+    if (id === "free") return FREE[freeSize];
+    if (isBonus(id)) return bonusConfig(bonusChapter(id));
+    return STAGES[id];
+  }
+  function levelName(id) {
+    if (id === "free") return freeSize + "×" + freeSize;
+    if (isBonus(id)) return "보너스 " + (bonusChapter(id) + 1);
+    return String(id + 1);
+  }
+  function isActive() { return state === "preview" || state === "fade" || state === "playing"; }
+
+  function newFree() {
+    freeSeed = Math.floor(Math.random() * 1000000000) + 1;
+    startLevel("free");
+  }
+
+  function startLevel(id) {
+    levelId = id;
+    cfg = configFor(id);
+    maze = buildLevel(cfg, seedFor(id));
+    player = { x: maze.start.x, y: maze.start.y };
+    drawPos = { x: player.x, y: player.y };
+    moving = null; slideDir = null; pausedFrom = null; dashing = false; lastDir = null;
+    moveCount = 0; stateTimer = 0; darkness = 0; flash = 0; beatPhase = 0; beatGlow = 0;
+    lastBump = { dir: null, at: -1 };
+    cam.ready = false;
+    oil = maze.lampMax;
+    state = "preview";
+    el.result.hidden = true;
+    el.pauseMenu.hidden = true;
+    el.select.hidden = true;
+    el.banner.hidden = true;
+    $("lamp-label").textContent = "기억하세요!";
+    $("lamp-label").className = "memo";
+    el.board.classList.add("memo");
+    el.kind.textContent = id === "free" ? "크기" : isBonus(id) ? "챕터" : "스테이지";
+    el.stage.textContent = levelName(id);
+    el.moves.textContent = "0";
+    el.goal.textContent = "★★★ " + maze.star3 + " 이하";
+    if (!isBonus(id) && id !== "free") selChapter = Math.floor(id / 10);
+    Sound.setLevel(1);
+    updateGauge();
+    resize();
+    try { canvas.focus({ preventScroll: true }); } catch (e) { canvas.focus(); }
+  }
+
+  function updateGauge() {
+    var f = Math.max(0, Math.min(1, oil / maze.lampMax));
+    el.gaugeFill.style.transform = "scaleX(" + f + ")";
+    el.gauge.classList.toggle("low", f < 0.25);
+  }
+
+  function startMove(dir) {
+    lastDir = dir;
+    moving = { from: { x: player.x, y: player.y }, t: 0 };
+    player = { x: player.x + dir.x, y: player.y + dir.y };
+    moveCount++;
+    el.moves.textContent = String(moveCount);
+    lastBump.dir = null;
+    Sound.step(moveCount);
+  }
+
+  function bumpWall(dir) {
+    if (lastBump.dir === dir && clock - lastBump.at < 0.6) return;
+    lastBump = { dir: dir, at: clock };
+    Sound.bump();
+    buzz(15);
+  }
+
+  function collectOil() {
+    for (var i = 0; i < maze.oils.length; i++) {
+      var o = maze.oils[i];
+      if (!o.taken && o.x === player.x && o.y === player.y) {
+        o.taken = true;
+        oil = Math.min(maze.lampMax, oil + OIL_SECONDS);
+        flash = 1;
+        Sound.oil();
+        buzz(30);
+      }
+    }
+  }
+
+  function showStars(n) {
+    var spans = el.resultStars.querySelectorAll("span");
+    for (var i = 0; i < spans.length; i++) spans[i].className = i < n ? "on" : "";
+    el.resultStars.setAttribute("aria-label", "별 " + n + "개");
+  }
+
+  function win() {
+    state = "won"; slideDir = null; darkness = 0; bonusJustOpened = null;
+    var stars = moveCount <= maze.star3 ? 3 : moveCount <= maze.star2 ? 2 : 1;
+    var note = "";
+    if (levelId === "free") {
+      var rec = progress.free[freeSize] || { clears: 0, three: 0 };
+      rec.clears++;
+      if (stars === 3) rec.three++;
+      progress.free[freeSize] = rec;
+      saveProgress();
+      updateRecord();
+      note = freeSize + "×" + freeSize + " 누적: 탈출 " + rec.clears + "회 · ★★★ " + rec.three + "회";
+    } else if (isBonus(levelId)) {
+      var bc = bonusChapter(levelId);
+      if (stars > (progress.bonus[bc] || 0)) { progress.bonus[bc] = stars; saveProgress(); }
+      note = "챕터 " + (bc + 1) + " 보너스 판 클리어!";
+    } else {
+      var chapter = Math.floor(levelId / 10);
+      var before = chapterBonusUnlocked(chapter);
+      if (stars > starsFor(levelId)) { progress.stars[levelId] = stars; saveProgress(); }
+      if (!before && chapterBonusUnlocked(chapter)) {
+        bonusJustOpened = "b" + chapter;
+        note = (chapter * 10 + 1) + "–" + (chapter * 10 + 10) + " 모두 ★★★! 보너스 판이 열렸습니다.";
+      } else if (stars < 3) {
+        note = "★★★ 기준: " + maze.star3 + "번 이하 이동";
+      }
+    }
+    el.resultTitle.textContent = "탈출 성공";
+    el.resultTitle.className = "win";
+    el.resultStars.hidden = false;
+    showStars(stars);
+    el.resultLine.textContent = moveCount + "번 이동 · 최단 경로 " + maze.shortest + "칸";
+    el.resultNote.textContent = note;
+    el.resultNote.hidden = !note;
+    var nextId = nextLevelId();
+    el.next.hidden = nextId === null;
+    el.next.textContent = isBonus(nextId) ? "보너스 판" : nextId === "free-new" ? "새 미로" : "다음 스테이지";
+    el.result.hidden = false;
+    Sound.win();
+    Sound.setLevel(0.5);
+    buzz([40, 40, 80]);
+    (el.next.hidden ? el.retry : el.next).focus();
+  }
+
+  function lose() {
+    state = "lost"; slideDir = null; darkness = 0;
+    el.resultTitle.textContent = "등불이 꺼졌습니다";
+    el.resultTitle.className = "lose";
+    el.resultStars.hidden = true;
+    el.resultLine.textContent = "출구까지 최단 " + maze.shortest + "칸이었습니다.";
+    el.resultNote.textContent = "기름병을 주우면 등불이 다시 밝아집니다.";
+    el.resultNote.hidden = false;
+    el.next.hidden = levelId !== "free";
+    el.next.textContent = "새 미로";
+    el.result.hidden = false;
+    Sound.lose();
+    Sound.setLevel(0.3);
+    buzz(220);
+    el.retry.focus();
+  }
+
+  function nextLevelId() {
+    if (levelId === "free") return "free-new";
+    if (bonusJustOpened) return bonusJustOpened;
+    if (isBonus(levelId)) {
+      var nextStage = (bonusChapter(levelId) + 1) * 10;
+      return nextStage < STAGES.length && isUnlocked(nextStage) ? nextStage : null;
+    }
+    return levelId + 1 < STAGES.length ? levelId + 1 : null;
+  }
+
+  function goNext() {
+    var n = nextLevelId();
+    if (n === "free-new") newFree();
+    else if (n !== null) startLevel(n);
+  }
+
+  // ---------- pause and back ----------
+  // The pause button also opens the menu on the result screen (mode, size, stage select, settings).
+  function pause() {
+    if (isActive()) {
+      pausedFrom = state;
+      state = "paused";
+      Sound.setLevel(0.35);
+    } else if (state !== "won" && state !== "lost") {
+      return;
+    }
+    heldDir = null; keysDown = []; padDir = null; slideDir = null; dashing = false;
+    releaseStick();
+    renderToggles();
+    el.select.hidden = true;
+    el.pauseMenu.hidden = false;
+    $("p-resume").focus();
+  }
+  function resume() {
+    if (state !== "paused") { el.pauseMenu.hidden = true; return; }
+    state = pausedFrom || "playing";
+    pausedFrom = null;
+    el.pauseMenu.hidden = true;
+    lastFrame = 0;
+    Sound.setLevel(1);
+    canvas.focus();
+  }
+  function handleBack() {
+    if (!el.select.hidden) { closeSelect(); return true; }
+    if (!el.pauseMenu.hidden) { resume(); return true; }
+    if (isActive()) { pause(); return true; }
+    if (!el.result.hidden) { pause(); return true; }
+    return false;
+  }
+
+  // ---------- main loop ----------
+  function updatePlaying(dt) {
+    oil -= dt;
+    flash = Math.max(0, flash - dt * 2);
+    updateGauge();
+    var f = oil / maze.lampMax;
+    if (oil <= 0) { oil = 0; updateGauge(); lose(); return; }
+
+    // Heartbeat when the lamp is low: faster as it runs out. Sound, buzz and red pulse share one clock.
+    if (f < 0.25) {
+      var rate = (1.6 + (0.25 - f) * 6) / 2;
+      var before = beatPhase;
+      beatPhase += dt * rate;
+      if (Math.floor(beatPhase) > Math.floor(before)) { beatGlow = 1; Sound.beat(); buzz(25); }
+    }
+    beatGlow = Math.max(0, beatGlow - dt * 3);
+
+    if (moving) {
+      moving.t = Math.min(1, moving.t + dt / MOVE_SECONDS);
+      drawPos.x = moving.from.x + (player.x - moving.from.x) * moving.t;
+      drawPos.y = moving.from.y + (player.y - moving.from.y) * moving.t;
+      if (moving.t < 1) return;
+      moving = null;
+      drawPos = { x: player.x, y: player.y };
+      collectOil();
+      if (player.x === maze.exit.x && player.y === maze.exit.y) { win(); return; }
+      if (exitsAt(player) > 2) { slideDir = null; dashing = false; }
+    }
+
+    // Holding a direction cancels a swipe slide, but not a dash the player asked for.
+    if (heldDir && !dashing) slideDir = null;
+    var dir = dashing ? slideDir : (heldDir || slideDir);
+    if (!dir) { dashing = false; return; }
+    if (canMove(player, dir)) startMove(dir);
+    else { slideDir = null; dashing = false; bumpWall(dir); }
+  }
+
+  function canMove(cell, dir) { return !maze.walls[cell.y * 2 + 1 + dir.y][cell.x * 2 + 1 + dir.x]; }
+  function exitsAt(cell) { var c = 0; for (var i = 0; i < 4; i++) if (canMove(cell, DIR_LIST[i])) c++; return c; }
+
+  function tick(now) {
+    var dt = lastFrame ? Math.min(0.05, (now - lastFrame) / 1000) : 0;
+    lastFrame = now;
+    if (state !== "paused") clock += dt;
+    if (state === "preview") {
+      stateTimer += dt;
+      if (stateTimer >= cfg.preview) {
+        state = "fade"; stateTimer = 0;
+        $("lamp-label").textContent = "등불"; $("lamp-label").className = "";
+        el.board.classList.remove("memo");
+        Sound.dark();
+      }
+    } else if (state === "fade") {
+      stateTimer += dt;
+      darkness = Math.min(1, stateTimer / FADE_SECONDS);
+      if (darkness >= 1) state = "playing";
+    } else if (state === "playing") {
+      updatePlaying(dt);
+    }
+    Sound.update();
+    updateCamera(dt);
+    draw();
+    requestAnimationFrame(tick);
+  }
+
+  // ---------- drawing ----------
+  var cssSize = 0;
+  function resize() {
+    var w = el.board.getBoundingClientRect().width;
+    if (!w) return;
+    cssSize = w;
+    var dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(cssSize * dpr);
+    canvas.height = Math.round(cssSize * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  // Camera: the whole maze is shown while memorising and on the result screen;
+  // during play the view zooms to a 10×10-cell window (21 tiles) that follows the player.
+  var VIEW_TILES = 21;
+  var cam = { span: 0, x: 0, y: 0, ready: false };
+  function cameraTarget() {
+    var full = maze.tiles;
+    var zoomed = state === "fade" || state === "playing" || state === "paused";
+    var span = zoomed ? Math.min(full, VIEW_TILES) : full;
+    var half = span / 2;
+    var tx = drawPos.x * 2 + 1.5, ty = drawPos.y * 2 + 1.5;
+    return {
+      span: span,
+      x: Math.min(full - half, Math.max(half, tx)),
+      y: Math.min(full - half, Math.max(half, ty))
+    };
+  }
+  function updateCamera(dt) {
+    if (!maze) return;
+    var t = cameraTarget();
+    if (!cam.ready) { cam.span = t.span; cam.x = t.x; cam.y = t.y; cam.ready = true; return; }
+    var k = Math.min(1, dt * 7);
+    cam.span += (t.span - cam.span) * k;
+    cam.x += (t.x - cam.x) * k;
+    cam.y += (t.y - cam.y) * k;
+  }
+
+  function draw() {
+    if (!maze || !cssSize) return;
+    var tile = cssSize / cam.span, x, y;
+    var ox = cssSize / 2 - cam.x * tile;
+    var oy = cssSize / 2 - cam.y * tile;
+    ctx.fillStyle = colors.floor;
+    ctx.fillRect(0, 0, cssSize, cssSize);
+    ctx.fillStyle = colors.stone;
+    var x0 = Math.max(0, Math.floor(-ox / tile)), x1 = Math.min(maze.tiles - 1, Math.ceil((cssSize - ox) / tile));
+    var y0 = Math.max(0, Math.floor(-oy / tile)), y1 = Math.min(maze.tiles - 1, Math.ceil((cssSize - oy) / tile));
+    for (y = y0; y <= y1; y++) for (x = x0; x <= x1; x++) {
+      if (maze.walls[y][x]) ctx.fillRect(Math.floor(ox + x * tile), Math.floor(oy + y * tile), Math.ceil(tile) + 1, Math.ceil(tile) + 1);
+    }
+    ctx.fillStyle = colors.exit;
+    ctx.fillRect(ox + (maze.exit.x * 2 + 1) * tile, oy + (maze.exit.y * 2 + 1) * tile, tile, tile);
+
+    ctx.fillStyle = colors.oil;
+    for (var i = 0; i < maze.oils.length; i++) {
+      var o = maze.oils[i];
+      if (o.taken) continue;
+      ctx.beginPath();
+      ctx.arc(ox + (o.x * 2 + 1.5) * tile, oy + (o.y * 2 + 1.5) * tile, tile * 0.32, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    var px = ox + (drawPos.x * 2 + 1.5) * tile;
+    var py = oy + (drawPos.y * 2 + 1.5) * tile;
+    var f = Math.max(0, Math.min(1, oil / maze.lampMax));
+
+    if (darkness > 0) {
+      var flicker = f < 0.25 ? 0.06 * Math.sin(clock * 23) : 0;
+      var r = (LIGHT_MIN + (LIGHT_MAX - LIGHT_MIN) * f + flicker + flash * 0.8) * tile;
+      var g = ctx.createRadialGradient(px, py, 0, px, py, r);
+      g.addColorStop(0, "rgba(0,0,0," + CENTER_DARKNESS + ")");
+      g.addColorStop(0.5, "rgba(0,0,0," + (CENTER_DARKNESS + (1 - CENTER_DARKNESS) * 0.5) + ")");
+      g.addColorStop(1, "rgba(0,0,0,1)");
+      ctx.globalAlpha = darkness;
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, cssSize, cssSize);
+      ctx.globalAlpha = 1;
+
+      if ((state === "playing" || state === "paused") && f < 0.25) {
+        var edge = ctx.createRadialGradient(cssSize / 2, cssSize / 2, cssSize * 0.35, cssSize / 2, cssSize / 2, cssSize * 0.72);
+        edge.addColorStop(0, "rgba(" + colors.danger + ",0)");
+        edge.addColorStop(1, "rgba(" + colors.danger + "," + (0.12 + 0.3 * beatGlow) + ")");
+        ctx.fillStyle = edge;
+        ctx.fillRect(0, 0, cssSize, cssSize);
+      }
+    }
+
+    var s = tile * 0.8;
+    ctx.fillStyle = colors.lamp;
+    ctx.fillRect(px - s / 2, py - s / 2, s, s);
+  }
+
+  // ---------- stage select ----------
+  function chapterStars(chapter) {
+    var total = 0;
+    for (var i = chapter * 10; i < chapter * 10 + 10; i++) total += starsFor(i);
+    return total;
+  }
+  function renderSelect() {
+    var total = 0, i;
+    for (i = 0; i < STAGES.length; i++) total += starsFor(i);
+    el.summary.textContent = "모은 별 " + total + " / " + STAGES.length * 3;
+
+    el.chapters.innerHTML = "";
+    for (var c = 0; c < CHAPTERS; c++) {
+      var cb = document.createElement("button");
+      cb.className = "chapter";
+      cb.id = "chapter-" + (c + 1);
+      cb.disabled = !isUnlocked(c * 10);
+      cb.setAttribute("aria-pressed", c === selChapter ? "true" : "false");
+      cb.innerHTML = (c * 10 + 1) + "–" + (c * 10 + 10) + "<small>★ " + chapterStars(c) + "/30</small>";
+      (function (idx) { cb.addEventListener("click", function () { selChapter = idx; Sound.click(); renderSelect(); }); })(c);
+      el.chapters.appendChild(cb);
+    }
+
+    el.grid.innerHTML = "";
+    for (i = selChapter * 10; i < selChapter * 10 + 10; i++) {
+      var stars = starsFor(i);
+      var b = document.createElement("button");
+      b.className = "stage";
+      b.id = "stage-" + (i + 1);
+      b.disabled = !isUnlocked(i);
+      var dots = "";
+      for (var k = 0; k < 3; k++) dots += '<span class="' + (k < stars ? "on" : "") + '">★</span>';
+      b.innerHTML = (i + 1) + "<small>" + dots + "</small>";
+      b.setAttribute("aria-label", "스테이지 " + (i + 1) + ", 별 " + stars + "개" + (b.disabled ? ", 잠김" : ""));
+      (function (idx) { b.addEventListener("click", function () { startLevel(idx); }); })(i);
+      el.grid.appendChild(b);
+    }
+
+    var open = chapterBonusUnlocked(selChapter);
+    var bonusStars = progress.bonus[selChapter] || 0;
+    el.bonusBtn.disabled = !open;
+    el.bonusBtn.innerHTML = "보너스 판 " + (selChapter + 1) + "<small>" + (open ? (bonusStars ? "★ " + bonusStars + "/3" : "도전 가능") : "이 챕터 모두 ★★★ 필요") + "</small>";
+  }
+  function openSelect() {
+    if (isActive()) pause();
+    el.pauseMenu.hidden = true;
+    renderSelect();
+    el.select.hidden = false;
+    $("close-select").focus();
+  }
+  function closeSelect() {
+    el.select.hidden = true;
+    if (state === "paused") { el.pauseMenu.hidden = false; $("p-resume").focus(); }
+  }
+
+  // ---------- settings toggles ----------
+  function renderToggles() {
+    [["t-sfx", "sfx"], ["t-bgm", "bgm"], ["t-vib", "vib"]].forEach(function (pair) {
+      var b = $(pair[0]);
+      b.setAttribute("aria-pressed", settings[pair[1]] ? "true" : "false");
+      b.querySelector("small").textContent = settings[pair[1]] ? "켜짐" : "꺼짐";
+    });
+  }
+  [["t-sfx", "sfx"], ["t-bgm", "bgm"], ["t-vib", "vib"]].forEach(function (pair) {
+    $(pair[0]).addEventListener("click", function () {
+      settings[pair[1]] = !settings[pair[1]];
+      saveSettings();
+      renderToggles();
+      Sound.refresh();
+      if (pair[1] === "vib" && settings.vib) buzz(30);
+      Sound.click();
+    });
+  });
+
+  // ---------- input ----------
+  var keyMap = { ArrowUp: "up", KeyW: "up", ArrowDown: "down", KeyS: "down", ArrowLeft: "left", KeyA: "left", ArrowRight: "right", KeyD: "right" };
+  var keysDown = [];
+  var padDir = null;
+  function refreshHeld() { heldDir = keysDown.length ? DIRS[keysDown[keysDown.length - 1]] : (padDir ? DIRS[padDir] : null); }
+
+  function unlockAudio() { Sound.unlock(); }
+  window.addEventListener("pointerdown", unlockAudio);
+  window.addEventListener("keydown", unlockAudio);
+
+  window.addEventListener("keydown", function (e) {
+    if (e.code === "Escape") { e.preventDefault(); handleBack(); return; }
+    if (e.code === "KeyP") { e.preventDefault(); if (!el.pauseMenu.hidden) resume(); else pause(); return; }
+    if (!el.select.hidden || state === "paused") return;
+    if (e.code === "KeyR") { e.preventDefault(); startLevel(levelId); return; }
+    if (e.code === "Space") { e.preventDefault(); dash(); return; }
+    var name = keyMap[e.code];
+    if (!name) return;
+    e.preventDefault();
+    if (keysDown.indexOf(name) === -1) keysDown.push(name);
+    refreshHeld();
+  });
+  window.addEventListener("keyup", function (e) {
+    var name = keyMap[e.code];
+    if (!name) return;
+    keysDown = keysDown.filter(function (k) { return k !== name; });
+    refreshHeld();
+  });
+  window.addEventListener("blur", function () { keysDown = []; padDir = null; refreshHeld(); });
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) { pause(); Sound.suspend(); }
+    else Sound.resume();
+  });
+
+  var swipeStart = null;
+  canvas.addEventListener("pointerdown", function (e) { swipeStart = { x: e.clientX, y: e.clientY }; canvas.focus(); });
+  canvas.addEventListener("pointerup", function (e) {
+    if (!swipeStart) return;
+    var dx = e.clientX - swipeStart.x, dy = e.clientY - swipeStart.y;
+    swipeStart = null;
+    if (state !== "playing" || (Math.abs(dx) < MIN_SWIPE_PX && Math.abs(dy) < MIN_SWIPE_PX)) return;
+    if (Math.abs(dx) > Math.abs(dy)) slideDir = dx > 0 ? DIRS.right : DIRS.left;
+    else slideDir = dy > 0 ? DIRS.down : DIRS.up;
+  });
+  canvas.addEventListener("pointercancel", function () { swipeStart = null; });
+
+  // Left-thumb joystick: touch anywhere in the left zone, the stick appears under the thumb,
+  // drag past the dead zone to pick one of four directions. Each finger is tracked separately.
+  var stickZone = $("stick-zone"), stickEl = $("stick"), knob = $("knob");
+  var stickId = null, stickOrigin = null;
+  var STICK_RADIUS = 48, STICK_DEAD = 14;
+  function setStickDir(name) {
+    if (padDir === name) return;
+    padDir = name;
+    refreshHeld();
+  }
+  function releaseStick() {
+    stickId = null;
+    stickEl.classList.remove("active");
+    stickEl.style.left = ""; stickEl.style.top = "";
+    knob.style.transform = "";
+    setStickDir(null);
+  }
+  stickZone.addEventListener("pointerdown", function (e) {
+    if (stickId !== null) return;
+    e.preventDefault();
+    stickId = e.pointerId;
+    try { stickZone.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+    var r = stickZone.getBoundingClientRect();
+    stickOrigin = { x: e.clientX, y: e.clientY };
+    stickEl.style.left = (e.clientX - r.left) + "px";
+    stickEl.style.top = (e.clientY - r.top) + "px";
+    stickEl.classList.add("active");
+  });
+  stickZone.addEventListener("pointermove", function (e) {
+    if (e.pointerId !== stickId) return;
+    var dx = e.clientX - stickOrigin.x, dy = e.clientY - stickOrigin.y;
+    var d = Math.sqrt(dx * dx + dy * dy);
+    var k = d > STICK_RADIUS ? STICK_RADIUS / d : 1;
+    knob.style.transform = "translate(" + dx * k + "px," + dy * k + "px)";
+    if (d < STICK_DEAD) { setStickDir(null); return; }
+    setStickDir(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up"));
+  });
+  function endStick(e) { if (e.pointerId === stickId) releaseStick(); }
+  stickZone.addEventListener("pointerup", endStick);
+  stickZone.addEventListener("pointercancel", endStick);
+  stickZone.addEventListener("lostpointercapture", endStick);
+  stickZone.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+
+  // Right-thumb dash: runs in the current (or last) direction until the next junction or wall.
+  function dash() {
+    if (state !== "playing") return;
+    var d = heldDir || lastDir;
+    if (!d || !canMove(player, d)) { if (d) bumpWall(d); return; }
+    slideDir = d;
+    dashing = true;
+    Sound.click();
+  }
+  var dashBtn = $("dash");
+  dashBtn.addEventListener("pointerdown", function (e) {
+    e.preventDefault();
+    dashBtn.classList.add("on");
+    dash();
+  });
+  ["pointerup", "pointercancel", "pointerleave"].forEach(function (t) { dashBtn.addEventListener(t, function () { dashBtn.classList.remove("on"); }); });
+  dashBtn.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+
+  // Suggest landscape on touch phones held upright.
+  var hintClosed = false;
+  function updateRotateHint() {
+    var portrait = window.matchMedia("(orientation: portrait)").matches;
+    var touch = window.matchMedia("(pointer: coarse)").matches;
+    $("rotate-hint").hidden = hintClosed || !(portrait && touch);
+  }
+  $("hint-close").addEventListener("click", function () { hintClosed = true; updateRotateHint(); });
+  window.addEventListener("resize", updateRotateHint);
+  updateRotateHint();
+
+  // ---------- modes ----------
+  function furthestStage() {
+    var at = 0;
+    for (var s = 0; s < STAGES.length; s++) if (isUnlocked(s)) at = s;
+    return at;
+  }
+  function updateRecord() {
+    var rec = progress.free[freeSize];
+    $("record").textContent = rec ? "탈출 " + rec.clears + "회 · ★★★ " + rec.three + "회" : "아직 기록 없음";
+  }
+  function setMode(next) {
+    mode = next;
+    $("mode-stage").setAttribute("aria-pressed", mode === "stage" ? "true" : "false");
+    $("mode-free").setAttribute("aria-pressed", mode === "free" ? "true" : "false");
+    $("open-select").hidden = mode !== "stage";
+    $("sizes").hidden = mode !== "free";
+    $("record").hidden = mode !== "free";
+    if (mode === "free") { updateRecord(); newFree(); }
+    else startLevel(furthestStage());
+  }
+
+  $("mode-stage").addEventListener("click", function () { if (mode !== "stage") setMode("stage"); });
+  $("mode-free").addEventListener("click", function () { if (mode !== "free") setMode("free"); });
+  var chips = document.querySelectorAll(".chip");
+  for (var c = 0; c < chips.length; c++) {
+    chips[c].addEventListener("click", function () {
+      freeSize = parseInt(this.getAttribute("data-size"), 10);
+      for (var k = 0; k < chips.length; k++) chips[k].setAttribute("aria-pressed", chips[k] === this ? "true" : "false");
+      updateRecord();
+      newFree();
+    });
+  }
+
+  el.retry.addEventListener("click", function () { startLevel(levelId); });
+  el.next.addEventListener("click", goNext);
+  $("pause").addEventListener("click", function () { Sound.click(); if (!el.pauseMenu.hidden) resume(); else pause(); });
+  $("p-resume").addEventListener("click", resume);
+  $("p-restart").addEventListener("click", function () { startLevel(levelId); });
+  $("open-select").addEventListener("click", openSelect);
+  $("close-select").addEventListener("click", closeSelect);
+  el.bonusBtn.addEventListener("click", function () { if (chapterBonusUnlocked(selChapter)) startLevel("b" + selChapter); });
+
+  window.addEventListener("resize", resize);
+  if (window.ResizeObserver) new ResizeObserver(resize).observe(el.board);
+
+  startLevel(furthestStage());
+  requestAnimationFrame(tick);
+
+  // Hook for a native wrapper (e.g. Android back button): returns true when handled.
+  window.LanternMaze = { back: handleBack, pause: pause, resume: resume };
+  window.__lanternMaze = { buildLevel: buildLevel, bfs: bfs, STAGES: STAGES, bonusConfig: bonusConfig, seedFor: seedFor, current: function () { return maze; }, state: function () { return state; } };
+})();
+</script>
+
+
+<script>
+/* Native app glue (Capacitor): Android back button and app pause. Does nothing in a browser. */
+(function () {
+  var Cap = window.Capacitor;
+  if (!Cap || !Cap.isNativePlatform || !Cap.isNativePlatform()) return;
+  var App = Cap.Plugins && Cap.Plugins.App;
+  if (!App) return;
+  App.addListener("backButton", function () {
+    if (window.LanternMaze) window.LanternMaze.back();
+  });
+  App.addListener("pause", function () {
+    if (window.LanternMaze) window.LanternMaze.pause();
+  });
+})();
+</script>
+</body>
+</html>
