@@ -25,6 +25,8 @@
   --font-body: "Gowun Dodum", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
   color-scheme: dark;
 }
+/* Background option 2: dark gray. Floor and lines are lifted a little so the maze still reads. */
+:root[data-bg="gray"] { --night: #24272e; --floor: #1a1e29; --line: #3a4152; }
 [hidden] { display: none !important; }
 html, body { height: 100%; }
 body {
@@ -148,6 +150,9 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
 .steps { display: grid; gap: 4px; }
 .steps.five { grid-template-columns: repeat(5, 1fr); }
 .steps.three { grid-template-columns: repeat(3, 1fr); }
+.steps.two { grid-template-columns: repeat(2, 1fr); }
+.setting-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.step { white-space: nowrap; }
 .step { padding: 7px 2px; border-radius: 6px; border: 1px solid var(--line); background: var(--floor); color: var(--muted); font-family: var(--font-body); font-size: 0.82rem; cursor: pointer; }
 .step[aria-pressed="true"] { border-color: var(--lamp); color: var(--night); background: var(--lamp); }
 
@@ -182,6 +187,8 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
   .toggle { padding: 4px; }
   .step, .modes button, .chip { padding-block: 5px; }
   .btn { padding: 7px 12px; }
+  .sizes { flex-wrap: nowrap; gap: 4px; }
+  .sizes .chip { padding-inline: 6px; font-size: 0.76rem; }
 }
 /* Portrait fallback: top bar, board, then joystick (left) and dash (right). */
 @media (orientation: portrait) {
@@ -248,6 +255,8 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
           <button class="chip" id="size-10" data-size="10" aria-pressed="true">10×10</button>
           <button class="chip" id="size-15" data-size="15" aria-pressed="false">15×15</button>
           <button class="chip" id="size-20" data-size="20" aria-pressed="false">20×20</button>
+          <button class="chip" id="size-25" data-size="25" aria-pressed="false">25×25</button>
+          <button class="chip" id="size-30" data-size="30" aria-pressed="false">30×30</button>
         </div>
         <span class="record" id="record" hidden></span>
         <div class="setting">
@@ -260,6 +269,7 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
             <button class="step" data-value="5">빠름</button>
           </div>
         </div>
+        <div class="setting-pair">
         <div class="setting">
           <span>조이스틱 민감도</span>
           <div class="steps three" id="stick-steps" role="group" aria-label="조이스틱 민감도">
@@ -267,6 +277,14 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
             <button class="step" data-value="2">보통</button>
             <button class="step" data-value="3">높음</button>
           </div>
+        </div>
+        <div class="setting">
+          <span>배경색</span>
+          <div class="steps two" id="bg-steps" role="group" aria-label="배경색">
+            <button class="step" data-value="1">검정</button>
+            <button class="step" data-value="2">다크 그레이</button>
+          </div>
+        </div>
         </div>
         <div class="toggles">
           <button class="toggle" id="t-sfx" aria-pressed="true">효과음<small>켜짐</small></button>
@@ -337,7 +355,10 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
     7:  { size: 7,  preview: 1.2, secPerCell: 1.10, oils: 1 },
     10: { size: 10, preview: 1.0, secPerCell: 0.90, oils: 2 },
     15: { size: 15, preview: 0.8, secPerCell: 0.75, oils: 3 },
-    20: { size: 20, preview: 0.7, secPerCell: 0.70, oils: 4 }
+    20: { size: 20, preview: 0.7, secPerCell: 0.70, oils: 4 },
+    // Bigger boards: preview grows a little again because each cell is drawn smaller on the full-maze preview.
+    25: { size: 25, preview: 0.8, secPerCell: 0.68, oils: 5 },
+    30: { size: 30, preview: 0.9, secPerCell: 0.66, oils: 6 }
   };
   var OIL_SECONDS = 5;
   var GRACE_SECONDS = 3;
@@ -370,7 +391,16 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
     select: $("select"), chapters: $("chapters"), grid: $("stage-grid"), summary: $("select-summary"), bonusBtn: $("bonus-btn"),
     board: $("board")
   };
-  var colors = { stone: "#6f7c99", floor: "#141824", lamp: "#ffcf5a", oil: "#ff9f3a", exit: "#39d98a", danger: "255,90,79" };
+  var colors = { stone: "#6f7c99", floor: "#141824", lamp: "#ffcf5a", oil: "#ff9f3a", exit: "#39d98a", danger: "255,90,79", dark: "0,0,0" };
+  // Background themes: 1 = black (original), 2 = dark gray. "dark" is the colour of the unlit area.
+  var BG_THEMES = { 1: { dark: "0,0,0", floor: "#141824" }, 2: { dark: "36,39,46", floor: "#1a1e29" } };
+  function applyBackground() {
+    var t = BG_THEMES[settings.bg] || BG_THEMES[1];
+    colors.dark = t.dark;
+    colors.floor = t.floor;
+    if (settings.bg === 2) document.documentElement.setAttribute("data-bg", "gray");
+    else document.documentElement.removeAttribute("data-bg");
+  }
 
   // ---------- storage ----------
   function readJson(key) {
@@ -389,7 +419,9 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
   ["sfx", "bgm", "vib"].forEach(function (key) { if (typeof settings[key] !== "boolean") settings[key] = true; });
   if (!(settings.speed >= 1 && settings.speed <= 5)) settings.speed = 3;
   if (!(settings.stick >= 1 && settings.stick <= 3)) settings.stick = 2;
+  if (!(settings.bg >= 1 && settings.bg <= 2)) settings.bg = 1;
   function saveSettings() { writeJson(SETTINGS_KEY, settings); }
+  applyBackground();
 
   function starsFor(i) { return progress.stars[i] || 0; }
   function isUnlocked(i) { return i === 0 || starsFor(i - 1) > 0; }
@@ -642,6 +674,10 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
     return { dist: dist, parent: parent };
   }
 
+  // Minimum shortest route. Up to 22×22 (all stages and bonus boards) it stays n²×30% so existing mazes do not change.
+  // Route length grows slower than n² (measured: 30×30 averages ~0.24n²), so bigger boards use 1.35·n^1.5,
+  // which is close to n²×30% around n = 20 and keeps the rule reachable (25×25 → 169, 30×30 → 222).
+  function minRouteLength(n) { return n <= 22 ? Math.round(n * n * 0.3) : Math.round(1.35 * Math.pow(n, 1.5)); }
   function buildLevel(cfg, seed) {
     var rng = makeRng(seed);
     var n = cfg.size, best = null;
@@ -663,7 +699,7 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
       m.start = start; m.exit = exit; m.path = path;
       m.shortest = path.length - 1;
       m.edgeShare = onEdge / path.length;
-      if (m.shortest >= Math.round(n * n * 0.3) && m.edgeShare <= 0.4) { best = m; break; }
+      if (m.shortest >= minRouteLength(n) && m.edgeShare <= 0.4) { best = m; break; }
       if (!best || m.shortest - m.edgeShare * n > best.shortest - best.edgeShare * n) best = m;
     }
     placeOils(best, cfg.oils, rng);
@@ -1071,9 +1107,9 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
       var flicker = f < 0.25 ? 0.06 * Math.sin(clock * 23) : 0;
       var r = (LIGHT_MIN + (LIGHT_MAX - LIGHT_MIN) * f + flicker + flash * 0.8) * tile;
       var g = ctx.createRadialGradient(px, py, 0, px, py, r);
-      g.addColorStop(0, "rgba(0,0,0," + CENTER_DARKNESS + ")");
-      g.addColorStop(0.5, "rgba(0,0,0," + (CENTER_DARKNESS + (1 - CENTER_DARKNESS) * 0.5) + ")");
-      g.addColorStop(1, "rgba(0,0,0,1)");
+      g.addColorStop(0, "rgba(" + colors.dark + "," + CENTER_DARKNESS + ")");
+      g.addColorStop(0.5, "rgba(" + colors.dark + "," + (CENTER_DARKNESS + (1 - CENTER_DARKNESS) * 0.5) + ")");
+      g.addColorStop(1, "rgba(" + colors.dark + ",1)");
       ctx.globalAlpha = darkness;
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, cssSize, cssSize);
@@ -1169,19 +1205,20 @@ button:focus-visible, canvas:focus-visible { outline: 2px solid var(--lamp); out
 
   // ---------- speed and joystick sensitivity ----------
   function renderSteps() {
-    [["speed-steps", "speed"], ["stick-steps", "stick"]].forEach(function (pair) {
+    [["speed-steps", "speed"], ["stick-steps", "stick"], ["bg-steps", "bg"]].forEach(function (pair) {
       var buttons = $(pair[0]).querySelectorAll(".step");
       for (var i = 0; i < buttons.length; i++) {
         buttons[i].setAttribute("aria-pressed", parseInt(buttons[i].getAttribute("data-value"), 10) === settings[pair[1]] ? "true" : "false");
       }
     });
   }
-  [["speed-steps", "speed"], ["stick-steps", "stick"]].forEach(function (pair) {
+  [["speed-steps", "speed"], ["stick-steps", "stick"], ["bg-steps", "bg"]].forEach(function (pair) {
     var buttons = $(pair[0]).querySelectorAll(".step");
     for (var i = 0; i < buttons.length; i++) {
       buttons[i].addEventListener("click", function () {
         settings[pair[1]] = parseInt(this.getAttribute("data-value"), 10);
         saveSettings();
+        if (pair[1] === "bg") applyBackground();
         renderSteps();
         Sound.click();
       });
