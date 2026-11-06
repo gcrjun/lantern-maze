@@ -1,0 +1,16 @@
+{
+  "name": "Lantern Maze",
+  "short_name": "Lantern Maze",
+  "description": "미로를 잠깐 보고, 어둠 속에서 기억으로 출구를 찾는 게임",
+  "start_url": "play/",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#07080d",
+  "theme_color": "#07080d",
+  "lang": "ko",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

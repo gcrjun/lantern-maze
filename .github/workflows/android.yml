@@ -53,3 +53,18 @@ jobs:
             --title "Lantern Maze test build" \
             --notes "Test build from commit ${GITHUB_SHA::7}. Install on an Android phone to try the game." \
             --prerelease
+
+      # Web version for iPhone and PC: landing page at the root, game at /play/, served by GitHub Pages
+      # from the gh-pages branch (Settings → Pages → Deploy from a branch → gh-pages).
+      - name: Publish the web version to gh-pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ./site/build.sh
+          cd _site
+          git init -q -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Web build from ${GITHUB_SHA::7}"
+          git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
